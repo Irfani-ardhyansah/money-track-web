@@ -19,8 +19,12 @@ class DashboardController extends Controller
         $month = (int) $request->query('month', now()->month);
         $year  = (int) $request->query('year', now()->year);
 
+        $breakdownFilter = in_array($request->query('breakdown_filter'), ['all', 'regular', 'savings'])
+            ? $request->query('breakdown_filter')
+            : 'all';
+
         $summary    = $this->reportService->monthlySummary($month, $year);
-        $breakdown  = $this->reportService->categoryBreakdown($month, $year);
+        $breakdown  = $this->reportService->categoryBreakdown($month, $year, $breakdownFilter);
         $recent     = $this->reportService->recentTransactions(10);
 
         $savingsTypes  = ['savings', 'investment'];
@@ -40,7 +44,7 @@ class DashboardController extends Controller
         return view('dashboard', compact(
             'summary', 'breakdown', 'recent',
             'walletTreeMonth', 'walletTreeSavings',
-            'month', 'year'
+            'month', 'year', 'breakdownFilter'
         ));
     }
 

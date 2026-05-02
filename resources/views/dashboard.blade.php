@@ -48,9 +48,17 @@
                 <h2 class="text-sm font-semibold text-zinc-400">Dompet Aktif</h2>
                 <p class="text-[10px] text-zinc-600 mt-0.5">Aktivitas {{ \Carbon\Carbon::create($year, $month)->locale('id')->isoFormat('MMMM YYYY') }}</p>
             </div>
-            <a href="{{ route('wallets.index') }}" class="text-xs text-emerald-400">Lihat semua</a>
+            <div class="flex items-center gap-2">
+                <a href="{{ route('wallets.index') }}" class="text-xs text-emerald-400">Lihat semua</a>
+                <button type="button" onclick="toggleSection('sec_dompet_aktif', this)"
+                        class="w-6 h-6 flex items-center justify-center rounded-lg bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors">
+                    <svg class="sec-chev w-3.5 h-3.5 transition-transform duration-200" style="transform:rotate(180deg)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/>
+                    </svg>
+                </button>
+            </div>
         </div>
-        <div class="space-y-2">
+        <div id="sec_dompet_aktif" class="space-y-2">
             @forelse($walletTreeMonth as $wallet)
                 @php
                 $savingTypes      = ['savings', 'investment'];
@@ -94,26 +102,34 @@
                                 </div>
                             @endforeach
 
-                            {{-- Savings / investment children — visually separated --}}
+                            {{-- Savings / investment children — visually separated with toggle --}}
                             @if($savingsKids->isNotEmpty())
-                                @if($spendableKids->isNotEmpty())
-                                    <div class="flex items-center gap-2 pt-1 pb-0.5">
-                                        <div class="flex-1 h-px bg-zinc-800"></div>
-                                        <span class="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Tabungan / Investasi</span>
-                                        <div class="flex-1 h-px bg-zinc-800"></div>
-                                    </div>
-                                @endif
-                                @foreach($savingsKids as $child)
-                                    <div class="flex items-center justify-between">
-                                        <div class="flex items-center gap-1.5">
-                                            <span class="w-1 h-1 rounded-full bg-emerald-600 shrink-0"></span>
-                                            <p class="text-xs text-zinc-500">{{ $child->name }}</p>
+                                @php $toggleId = 'savings_kids_' . $wallet->id; @endphp
+                                <button type="button"
+                                        onclick="(function(btn){var el=document.getElementById('{{ $toggleId }}');var icon=btn.querySelector('.chev');var hidden=el.classList.toggle('hidden');icon.style.transform=hidden?'':'rotate(180deg)';})(this)"
+                                        class="flex items-center gap-2 w-full pt-1 pb-0.5 group">
+                                    <div class="flex-1 h-px bg-zinc-800"></div>
+                                    <span class="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 group-hover:text-emerald-600 transition-colors flex items-center gap-1">
+                                        Tabungan / Investasi
+                                        <svg class="chev w-3 h-3 text-emerald-700 transition-transform duration-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/>
+                                        </svg>
+                                    </span>
+                                    <div class="flex-1 h-px bg-zinc-800"></div>
+                                </button>
+                                <div id="{{ $toggleId }}" class="hidden space-y-1">
+                                    @foreach($savingsKids as $child)
+                                        <div class="flex items-center justify-between">
+                                            <div class="flex items-center gap-1.5">
+                                                <span class="w-1 h-1 rounded-full bg-emerald-600 shrink-0"></span>
+                                                <p class="text-xs text-zinc-500">{{ $child->name }}</p>
+                                            </div>
+                                            <span class="text-xs {{ $child->balance >= 0 ? 'text-emerald-500/80' : 'text-rose-400' }}">
+                                                {{ ($child->balance < 0 ? '-' : '') . 'Rp '.number_format(abs($child->balance), 0, ',', '.') }}
+                                            </span>
                                         </div>
-                                        <span class="text-xs {{ $child->balance >= 0 ? 'text-emerald-500/80' : 'text-rose-400' }}">
-                                            {{ ($child->balance < 0 ? '-' : '') . 'Rp '.number_format(abs($child->balance), 0, ',', '.') }}
-                                        </span>
-                                    </div>
-                                @endforeach
+                                    @endforeach
+                                </div>
                             @endif
 
                         </div>
@@ -136,9 +152,17 @@
                 <h2 class="text-sm font-semibold text-zinc-400">Tabungan & Investasi</h2>
                 <p class="text-[10px] text-zinc-600 mt-0.5">Total saldo kumulatif</p>
             </div>
-            <a href="{{ route('savings.index') }}" class="text-xs text-emerald-400">Detail</a>
+            <div class="flex items-center gap-2">
+                <a href="{{ route('savings.index') }}" class="text-xs text-emerald-400">Detail</a>
+                <button type="button" onclick="toggleSection('sec_tabungan', this)"
+                        class="w-6 h-6 flex items-center justify-center rounded-lg bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors">
+                    <svg class="sec-chev w-3.5 h-3.5 transition-transform duration-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/>
+                    </svg>
+                </button>
+            </div>
         </div>
-        <div class="space-y-2">
+        <div id="sec_tabungan" class="hidden space-y-2">
             @foreach($walletTreeSavings as $wallet)
                 @php
                 $savingsTypeLabels = ['savings' => 'Tabungan', 'investment' => 'Investasi'];
@@ -175,16 +199,83 @@
     @endif
 
     {{-- Category breakdown --}}
-    @if($breakdown->isNotEmpty())
     <div class="px-4 mb-4">
-        <h2 class="text-sm font-semibold text-zinc-400 mb-2">Pengeluaran per Kategori</h2>
+        <div class="flex items-center justify-between mb-2">
+            <h2 class="text-sm font-semibold text-zinc-400">Pengeluaran per Kategori</h2>
+            {{-- Filter chips + toggle --}}
+            <div class="flex items-center gap-1.5">
+                @php
+                    $bfBase = ['month' => $month, 'year' => $year];
+                    $filters = [
+                        'all'     => 'Semua',
+                        'regular' => 'Aktif',
+                        'savings' => 'Tabungan',
+                    ];
+                @endphp
+                @foreach($filters as $fKey => $fLabel)
+                    @php $isActive = $breakdownFilter === $fKey; @endphp
+                    <a href="{{ route('dashboard', array_merge($bfBase, ['breakdown_filter' => $fKey])) }}"
+                       class="px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors
+                              {{ $isActive
+                                 ? ($fKey === 'savings' ? 'bg-violet-600 text-white' : 'bg-rose-600 text-white')
+                                 : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700' }}">
+                        {{ $fLabel }}
+                    </a>
+                @endforeach
+                <button type="button" onclick="toggleSection('sec_breakdown', this)"
+                        class="w-6 h-6 flex items-center justify-center rounded-lg bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors ml-0.5">
+                    <svg class="sec-chev w-3.5 h-3.5 transition-transform duration-200" style="transform:rotate(180deg)" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div id="sec_breakdown">
+        @if($breakdownFilter === 'all' && $breakdown->where('entry_type', 'transfer_savings')->isNotEmpty() && $breakdown->where('entry_type', 'expense')->isNotEmpty())
+        <div class="flex items-center gap-3 mb-2">
+            <span class="flex items-center gap-1 text-[10px] text-zinc-500">
+                <span class="w-2 h-2 rounded-full bg-rose-500 shrink-0"></span> Pengeluaran
+            </span>
+            <span class="flex items-center gap-1 text-[10px] text-zinc-500">
+                <span class="w-2 h-2 rounded-full bg-violet-500 shrink-0"></span> Transfer ke Tabungan
+            </span>
+        </div>
+        @endif
+
+        @if($breakdown->isNotEmpty())
         <div class="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 space-y-3">
             @foreach($breakdown as $item)
+                @php
+                    $isSavingsTransfer = $item->entry_type === 'transfer_savings';
+                    $barColor = $isSavingsTransfer ? 'bg-violet-500' : 'bg-rose-500';
+                    $dotColor = $isSavingsTransfer ? 'bg-violet-500' : 'bg-rose-500';
+                @endphp
+                @if($isSavingsTransfer)
+                {{-- Transfer-to-savings row: not clickable --}}
+                <div class="w-full">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs text-zinc-300 flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full {{ $dotColor }} shrink-0"></span>
+                            {{ $item->category_name }}
+                            <span class="text-[10px] text-violet-500 bg-violet-950/60 px-1.5 py-0.5 rounded-full">Transfer</span>
+                        </span>
+                        <span class="text-xs text-zinc-400">{{ $item->percentage }}%
+                            <span class="text-zinc-500 ml-1">{{ 'Rp '.number_format($item->amount, 0, ',', '.') }}</span>
+                        </span>
+                    </div>
+                    <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                        <div class="h-full {{ $barColor }} rounded-full" style="width: {{ $item->percentage }}%"></div>
+                    </div>
+                </div>
+                @else
+                {{-- Expense row: clickable, opens category modal --}}
                 <button type="button"
                         class="w-full text-left active:opacity-70 transition-opacity"
                         onclick="openCatModal({{ $item->category_id }}, '{{ addslashes($item->category_name) }}', '{{ number_format($item->amount, 0, ',', '.') }}')">
                     <div class="flex items-center justify-between mb-1">
-                        <span class="text-xs text-zinc-300 flex items-center gap-1">
+                        <span class="text-xs text-zinc-300 flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full {{ $dotColor }} shrink-0"></span>
                             {{ $item->category_name }}
                             <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/>
@@ -195,15 +286,19 @@
                         </span>
                     </div>
                     <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <div class="h-full bg-rose-500 rounded-full" style="width: {{ $item->percentage }}%"></div>
+                        <div class="h-full {{ $barColor }} rounded-full" style="width: {{ $item->percentage }}%"></div>
                     </div>
                 </button>
+                @endif
             @endforeach
         </div>
+        @else
+        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-6 text-center">
+            <p class="text-sm text-zinc-500">Tidak ada pengeluaran bulan ini.</p>
+        </div>
+        @endif
+        </div>{{-- end sec_breakdown --}}
     </div>
-    @endif
-
-    {{-- Category detail modal --}}
     <div id="catModal" class="fixed inset-0 z-[60] hidden" aria-modal="true" role="dialog">
         <div id="catModalBackdrop" class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
         <div id="catModalSheet"
@@ -244,9 +339,17 @@
     <div class="px-4 mb-4">
         <div class="flex items-center justify-between mb-2">
             <h2 class="text-sm font-semibold text-zinc-400">Transaksi Terakhir</h2>
-            <a href="{{ route('transactions.index') }}" class="text-xs text-emerald-400">Lihat semua</a>
+            <div class="flex items-center gap-2">
+                <a href="{{ route('transactions.index') }}" class="text-xs text-emerald-400">Lihat semua</a>
+                <button type="button" onclick="toggleSection('sec_recent', this)"
+                        class="w-6 h-6 flex items-center justify-center rounded-lg bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors">
+                    <svg class="sec-chev w-3.5 h-3.5 transition-transform duration-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/>
+                    </svg>
+                </button>
+            </div>
         </div>
-        <div class="space-y-2">
+        <div id="sec_recent" class="hidden space-y-2">
             @forelse($recent as $tx)
                 <a href="{{ route('transactions.show', $tx) }}"
                    class="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 flex items-center gap-3 active:bg-zinc-800 transition-colors block">
@@ -312,6 +415,13 @@
         const catSubtitle = document.getElementById('catModalSubtitle');
         const catBody     = document.getElementById('catModalBody');
         const catLoading  = document.getElementById('catModalLoading');
+
+        function toggleSection(id, btn) {
+            var el   = document.getElementById(id);
+            var chev = btn.querySelector('.sec-chev');
+            var hidden = el.classList.toggle('hidden');
+            if (chev) chev.style.transform = hidden ? '' : 'rotate(180deg)';
+        }
 
         function openCatModal(categoryId, categoryName, totalFormatted) {
             catTitle.textContent    = categoryName;

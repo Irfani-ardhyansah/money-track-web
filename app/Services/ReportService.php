@@ -33,38 +33,95 @@ class ReportService
 
     /**
      * Category breakdown for a given month.
-     * Only `expense` transactions are included; transfer is excluded.
-     * Returns a collection of objects with: category, amount, percentage.
+     *
+     * @param string $walletFilter  'all' | 'regular' | 'savings'
+     *   - all     : expense (all wallets, rose) + transfer to savings/investment wallets (violet)
+     *   - regular : expense transactions only (non-savings wallets)
+     *   - savings : transfer transactions whose destination is a savings/investment wallet
+     *
+     * Each returned object has:
+     *   category_id    – numeric category ID for expenses, null for transfer-to-savings rows
+     *   category_name  – category name or destination wallet name
+     *   amount         – float total
+     *   percentage     – float percentage of grand total
+     *   entry_type     – 'expense' | 'transfer_savings'
      */
-    public function categoryBreakdown(int $month, int $year): Collection
+    public function categoryBreakdown(int $month, int $year, string $walletFilter = 'all'): Collection
     {
-        $rows = DB::table('transactions')
-            ->join('categories', 'transactions.category_id', '=', 'categories.id')
-            ->whereYear('transactions.occurred_at', $year)
-            ->whereMonth('transactions.occurred_at', $month)
-            ->where('transactions.type', 'expense')
-            ->whereNull('categories.deleted_at')
-            ->groupBy('transactions.category_id', 'categories.name')
-            ->select(
-                'transactions.category_id',
-                'categories.name as category_name',
-                DB::raw('SUM(transactions.amount) as total')
-            )
-            ->orderByDesc('total')
-            ->get();
+        $savingsTypes = ['savings', 'investment'];
+        $items        = collect();
 
-        $grandTotal = $rows->sum('total');
+        // --- expense rows ---
+        if (in_array($walletFilter, ['all', 'regular'])) {
+            $expQuery = DB::table('transactions')
+                ->join('categories', 'transactions.category_id', '=', 'categories.id')
+                ->join('wallets', 'transactions.wallet_id', '=', 'wallets.id')
+                ->whereYear('transactions.occurred_at', $year)
+                ->whereMonth('transactions.occurred_at', $month)
+                ->where('transactions.type', 'expense')
+                ->whereNull('categories.deleted_at')
+                ->whereNull('wallets.deleted_at');
 
-        return $rows->map(function ($row) use ($grandTotal) {
-            return (object) [
-                'category_id' => $row->category_id,
-                'category_name' => $row->category_name,
-                'amount' => (float) $row->total,
-                'percentage' => $grandTotal > 0
-                    ? round(($row->total / $grandTotal) * 100, 1)
-                    : 0,
-            ];
-        });
+            if ($walletFilter === 'regular') {
+                $expQuery->whereNotIn('wallets.type', $savingsTypes);
+            }
+
+            $expRows = $expQuery
+                ->groupBy('transactions.category_id', 'categories.name')
+                ->select(
+                    'transactions.category_id',
+                    'categories.name as category_name',
+                    DB::raw('SUM(transactions.amount) as total')
+                )
+                ->get()
+                ->map(fn ($r) => (object) [
+                    'category_id'   => (int) $r->category_id,
+                    'category_name' => $r->category_name,
+                    'amount'        => (float) $r->total,
+                    'entry_type'    => 'expense',
+                ]);
+
+            $items = $items->merge($expRows);
+        }
+
+        // --- transfer-to-savings rows (grouped by destination wallet) ---
+        if (in_array($walletFilter, ['all', 'savings'])) {
+            $trRows = DB::table('transactions')
+                ->join('wallets as tw', 'transactions.to_wallet_id', '=', 'tw.id')
+                ->whereYear('transactions.occurred_at', $year)
+                ->whereMonth('transactions.occurred_at', $month)
+                ->where('transactions.type', 'transfer')
+                ->whereIn('tw.type', $savingsTypes)
+                ->whereNull('tw.deleted_at')
+                ->groupBy('transactions.to_wallet_id', 'tw.name')
+                ->select(
+                    'transactions.to_wallet_id',
+                    'tw.name as wallet_name',
+                    DB::raw('SUM(transactions.amount) as total')
+                )
+                ->get()
+                ->map(fn ($r) => (object) [
+                    'category_id'   => null,
+                    'category_name' => $r->wallet_name,
+                    'amount'        => (float) $r->total,
+                    'entry_type'    => 'transfer_savings',
+                ]);
+
+            $items = $items->merge($trRows);
+        }
+
+        $grandTotal = $items->sum('amount');
+
+        return $items
+            ->sortByDesc('amount')
+            ->values()
+            ->map(function ($item) use ($grandTotal) {
+                $item->percentage = $grandTotal > 0
+                    ? round(($item->amount / $grandTotal) * 100, 1)
+                    : 0;
+
+                return $item;
+            });
     }
 
     /**
