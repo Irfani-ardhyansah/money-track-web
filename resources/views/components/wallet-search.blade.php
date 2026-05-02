@@ -5,6 +5,7 @@
     'initialBalance' => null,
     'color'          => 'emerald',
     'placeholder'    => 'Cari dompet...',
+    'filterType'     => '',   // comma-separated types, e.g. "savings,investment"
 ])
 
 @php
@@ -100,7 +101,9 @@ function initWalletSearch(cfg) {
     }
 
     function doSearch(q) {
-        fetch(cfg.searchUrl + '?q=' + encodeURIComponent(q))
+        let url = cfg.searchUrl + '?q=' + encodeURIComponent(q);
+        if (cfg.filterType) url += '&filter_type=' + encodeURIComponent(cfg.filterType);
+        fetch(url)
             .then(function(r) { return r.json(); })
             .then(render);
     }
@@ -143,5 +146,6 @@ initWalletSearch({
     badgeId:    '{{ $badgeId }}',
     valueId:    '{{ $valueId }}',
     searchUrl:  '{{ route('wallets.search') }}',
+    filterType: '{{ $filterType }}',
 });
 </script>

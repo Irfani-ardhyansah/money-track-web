@@ -62,13 +62,17 @@ class WalletController extends Controller
 
     public function search(Request $request)
     {
-        $q = $request->input('q', '');
+        $q           = $request->input('q', '');
+        $filterTypes = $request->input('filter_type')
+            ? explode(',', $request->input('filter_type'))
+            : [];
 
         $wallets = Wallet::with('parent')
             ->where(function ($query) use ($q) {
                 $query->where('name', 'like', "%{$q}%")
                     ->orWhereHas('parent', fn ($p) => $p->where('name', 'like', "%{$q}%"));
             })
+            ->when($filterTypes, fn ($query) => $query->whereIn('type', $filterTypes))
             ->orderBy('name')
             ->limit(20)
             ->get();
