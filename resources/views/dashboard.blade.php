@@ -44,7 +44,10 @@
     {{-- Wallet balances --}}
     <div class="px-4 mb-2">
         <div class="flex items-center justify-between mb-2">
-            <h2 class="text-sm font-semibold text-zinc-400">Saldo Dompet</h2>
+            <div>
+                <h2 class="text-sm font-semibold text-zinc-400">Aktivitas Dompet</h2>
+                <p class="text-[10px] text-zinc-600 mt-0.5">{{ \Carbon\Carbon::create($year, $month)->locale('id')->isoFormat('MMMM YYYY') }}</p>
+            </div>
             <a href="{{ route('wallets.index') }}" class="text-xs text-emerald-400">Lihat semua</a>
         </div>
         <div class="space-y-2">
@@ -87,9 +90,16 @@
         <h2 class="text-sm font-semibold text-zinc-400 mb-2">Pengeluaran per Kategori</h2>
         <div class="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 space-y-3">
             @foreach($breakdown as $item)
-                <div>
+                <button type="button"
+                        class="w-full text-left active:opacity-70 transition-opacity"
+                        onclick="openCatModal({{ $item->category_id }}, '{{ addslashes($item->category_name) }}', '{{ number_format($item->amount, 0, ',', '.') }}')">
                     <div class="flex items-center justify-between mb-1">
-                        <span class="text-xs text-zinc-300">{{ $item->category_name }}</span>
+                        <span class="text-xs text-zinc-300 flex items-center gap-1">
+                            {{ $item->category_name }}
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/>
+                            </svg>
+                        </span>
                         <span class="text-xs text-zinc-400">{{ $item->percentage }}%
                             <span class="text-zinc-500 ml-1">{{ 'Rp '.number_format($item->amount, 0, ',', '.') }}</span>
                         </span>
@@ -97,11 +107,48 @@
                     <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                         <div class="h-full bg-rose-500 rounded-full" style="width: {{ $item->percentage }}%"></div>
                     </div>
-                </div>
+                </button>
             @endforeach
         </div>
     </div>
     @endif
+
+    {{-- Category detail modal --}}
+    <div id="catModal" class="fixed inset-0 z-[60] hidden" aria-modal="true" role="dialog">
+        <div id="catModalBackdrop" class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+        <div id="catModalSheet"
+             class="absolute bottom-0 left-0 right-0 bg-zinc-900 rounded-t-2xl flex flex-col max-h-[85vh] translate-y-full transition-transform duration-300 ease-out">
+
+            {{-- Handle --}}
+            <div class="flex justify-center pt-3 pb-1 shrink-0">
+                <div class="w-10 h-1 rounded-full bg-zinc-700"></div>
+            </div>
+
+            {{-- Header --}}
+            <div class="flex items-start justify-between px-4 py-3 border-b border-zinc-800 shrink-0">
+                <div>
+                    <h3 id="catModalTitle" class="text-base font-semibold text-zinc-100"></h3>
+                    <p id="catModalSubtitle" class="text-xs text-zinc-500 mt-0.5"></p>
+                </div>
+                <button onclick="closeCatModal()"
+                        class="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 shrink-0 ml-3 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            {{-- Body --}}
+            <div id="catModalBody" class="overflow-y-auto flex-1 px-4 py-3 space-y-2">
+                <div id="catModalLoading" class="flex justify-center py-8">
+                    <svg class="w-5 h-5 text-zinc-500 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
 
     {{-- Recent transactions --}}
     <div class="px-4 mb-4">
@@ -162,5 +209,62 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
         </svg>
     </a>
+
+    <script>
+        const _catApiUrl = '{{ route('dashboard.category.transactions') }}';
+        const _catMonth  = {{ $month }};
+        const _catYear   = {{ $year }};
+
+        const catModal    = document.getElementById('catModal');
+        const catSheet    = document.getElementById('catModalSheet');
+        const catBackdrop = document.getElementById('catModalBackdrop');
+        const catTitle    = document.getElementById('catModalTitle');
+        const catSubtitle = document.getElementById('catModalSubtitle');
+        const catBody     = document.getElementById('catModalBody');
+        const catLoading  = document.getElementById('catModalLoading');
+
+        function openCatModal(categoryId, categoryName, totalFormatted) {
+            catTitle.textContent    = categoryName;
+            catSubtitle.textContent = 'Total: Rp\u00A0' + totalFormatted;
+            catBody.innerHTML       = catLoading.outerHTML;
+
+            catModal.classList.remove('hidden');
+            requestAnimationFrame(function() {
+                requestAnimationFrame(function() {
+                    catSheet.classList.remove('translate-y-full');
+                });
+            });
+
+            fetch(_catApiUrl + '?category_id=' + categoryId + '&month=' + _catMonth + '&year=' + _catYear)
+                .then(function(r) { return r.json(); })
+                .then(function(items) {
+                    if (!items.length) {
+                        catBody.innerHTML = '<p class="text-sm text-zinc-500 text-center py-8">Tidak ada transaksi.</p>';
+                        return;
+                    }
+                    catBody.innerHTML = items.map(function(tx) {
+                        return '<a href="/transactions/' + tx.id + '"'
+                            + ' class="flex items-center justify-between bg-zinc-800/60 border border-zinc-700/50 rounded-xl px-3 py-2.5 active:bg-zinc-700 transition-colors">'
+                            + '<div class="min-w-0">'
+                            + '<p class="text-xs text-zinc-500">' + tx.date + ' &middot; ' + tx.wallet + '</p>'
+                            + (tx.notes ? '<p class="text-sm text-zinc-300 truncate mt-0.5">' + tx.notes + '</p>' : '<p class="text-sm text-zinc-500 italic mt-0.5">Tanpa catatan</p>')
+                            + '</div>'
+                            + '<span class="text-sm font-semibold text-rose-400 shrink-0 ml-3">-Rp\u00A0' + Number(tx.amount).toLocaleString('id-ID') + '</span>'
+                            + '</a>';
+                    }).join('');
+                });
+        }
+
+        function closeCatModal() {
+            catSheet.classList.add('translate-y-full');
+            setTimeout(function() { catModal.classList.add('hidden'); }, 300);
+        }
+
+        catBackdrop.addEventListener('click', closeCatModal);
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeCatModal();
+        });
+    </script>
 
 </x-layouts.app>

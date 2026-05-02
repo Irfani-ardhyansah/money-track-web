@@ -63,58 +63,58 @@
             @error('occurred_at')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
         </div>
 
+        @php
+        $initWalletId     = old('wallet_id', $transaction->wallet_id);
+        $initWalletObj    = $initWalletId ? $wallets->firstWhere('id', $initWalletId) : null;
+        $initWalletLabel  = $initWalletObj
+            ? ($initWalletObj->parent ? $initWalletObj->parent->name . ' › ' . $initWalletObj->name : $initWalletObj->name)
+            : '';
+        $initWalletBal    = $initWalletObj ? (float) $balances->get($initWalletObj->id, 0) : null;
+
+        $initToWalletId    = old('to_wallet_id', $transaction->to_wallet_id);
+        $initToWalletObj   = $initToWalletId ? $wallets->firstWhere('id', $initToWalletId) : null;
+        $initToWalletLabel = $initToWalletObj
+            ? ($initToWalletObj->parent ? $initToWalletObj->parent->name . ' › ' . $initToWalletObj->name : $initToWalletObj->name)
+            : '';
+        $initToWalletBal   = $initToWalletObj ? (float) $balances->get($initToWalletObj->id, 0) : null;
+        @endphp
+
         <div>
             <label class="block text-sm text-zinc-400 mb-1.5">Dompet</label>
-            <select name="wallet_id" id="wallet_id"
-                    class="w-full bg-zinc-800 border border-zinc-700 text-zinc-100 text-base rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none">
-                @foreach($wallets as $wallet)
-                    <option value="{{ $wallet->id }}"
-                            data-balance="{{ $balances->get($wallet->id, 0) }}"
-                            @selected(old('wallet_id', $transaction->wallet_id) == $wallet->id)>
-                        {{ $wallet->parent ? $wallet->parent->name . ' › ' . $wallet->name : $wallet->name }}
-                    </option>
-                @endforeach
-            </select>
-            <div id="wallet_balance_badge" class="hidden mt-1.5 flex items-center justify-between px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700">
-                <span class="text-xs text-zinc-500">Saldo saat ini</span>
-                <span id="wallet_balance_value" class="text-xs font-semibold"></span>
-            </div>
+            <x-wallet-search
+                name="wallet_id"
+                :initialId="$initWalletId"
+                :initialLabel="$initWalletLabel"
+                :initialBalance="$initWalletBal"
+                placeholder="Cari dompet..."
+            />
             @error('wallet_id')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
         </div>
 
         <div id="toWalletField" class="{{ old('type', $transaction->type) !== 'transfer' ? 'hidden' : '' }}">
             <label class="block text-sm text-zinc-400 mb-1.5">Ke Dompet</label>
-            <select name="to_wallet_id" id="to_wallet_id"
-                    class="w-full bg-zinc-800 border border-zinc-700 text-zinc-100 text-base rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
-                <option value="">— Pilih dompet tujuan —</option>
-                @foreach($wallets as $wallet)
-                    <option value="{{ $wallet->id }}"
-                            data-balance="{{ $balances->get($wallet->id, 0) }}"
-                            @selected(old('to_wallet_id', $transaction->to_wallet_id) == $wallet->id)>
-                        {{ $wallet->parent ? $wallet->parent->name . ' › ' . $wallet->name : $wallet->name }}
-                    </option>
-                @endforeach
-            </select>
-            <div id="to_wallet_balance_badge" class="hidden mt-1.5 flex items-center justify-between px-3 py-2 rounded-xl bg-zinc-800/60 border border-zinc-700">
-                <span class="text-xs text-zinc-500">Saldo saat ini</span>
-                <span id="to_wallet_balance_value" class="text-xs font-semibold"></span>
-            </div>
+            <x-wallet-search
+                name="to_wallet_id"
+                :initialId="$initToWalletId"
+                :initialLabel="$initToWalletLabel"
+                :initialBalance="$initToWalletBal"
+                color="blue"
+                placeholder="Cari dompet tujuan..."
+            />
             @error('to_wallet_id')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
         </div>
 
+        @php
+        $initCatId  = old('category_id', $transaction->category_id);
+        $initCatObj = $initCatId ? $categories->firstWhere('id', $initCatId) : null;
+        @endphp
         <div id="categoryField" class="{{ old('type', $transaction->type) === 'transfer' ? 'hidden' : '' }}">
             <label class="block text-sm text-zinc-400 mb-1.5">Kategori</label>
-            <select name="category_id"
-                    class="w-full bg-zinc-800 border border-zinc-700 text-zinc-100 text-base rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none">
-                <option value="">— Pilih kategori —</option>
-                @foreach($categories->groupBy('type') as $type => $group)
-                    <optgroup label="{{ $type === 'income' ? 'Pemasukan' : 'Pengeluaran' }}">
-                        @foreach($group as $cat)
-                            <option value="{{ $cat->id }}" @selected(old('category_id', $transaction->category_id) == $cat->id)>{{ $cat->name }}</option>
-                        @endforeach
-                    </optgroup>
-                @endforeach
-            </select>
+            <x-category-search
+                :initialId="$initCatId"
+                :initialLabel="$initCatObj?->name ?? ''"
+                placeholder="Cari kategori..."
+            />
             @error('category_id')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
         </div>
 
@@ -155,34 +155,6 @@
         if (amountHidden.value) {
             amountDisplay.value = toRupiah(amountHidden.value);
         }
-
-        // ── Wallet balance badge ──────────────────────────────────────
-        function showBalanceBadge(selectId, badgeId, valueId) {
-            const select  = document.getElementById(selectId);
-            const badge   = document.getElementById(badgeId);
-            const valueEl = document.getElementById(valueId);
-
-            function refresh() {
-                const opt = select.options[select.selectedIndex];
-                const raw = opt && opt.value ? parseFloat(opt.dataset.balance ?? 0) : null;
-
-                if (raw === null) {
-                    badge.classList.add('hidden');
-                    return;
-                }
-
-                badge.classList.remove('hidden');
-                const sign = raw < 0 ? '-' : '';
-                valueEl.textContent = sign + 'Rp ' + Math.abs(raw).toLocaleString('id-ID');
-                valueEl.className = 'text-xs font-semibold ' + (raw < 0 ? 'text-rose-400' : 'text-emerald-400');
-            }
-
-            select.addEventListener('change', refresh);
-            refresh();
-        }
-
-        showBalanceBadge('wallet_id',    'wallet_balance_badge',    'wallet_balance_value');
-        showBalanceBadge('to_wallet_id', 'to_wallet_balance_badge', 'to_wallet_balance_value');
 
         // ── Type selector ─────────────────────────────────────────────
         const labels = document.querySelectorAll('.type-label');

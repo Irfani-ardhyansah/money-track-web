@@ -54,4 +54,25 @@ class CategoryController extends Controller
         return redirect()->route('categories.index')
             ->with('success', 'Kategori berhasil dihapus.');
     }
+
+    public function search(Request $request)
+    {
+        $q    = $request->input('q', '');
+        $type = $request->input('type');
+
+        $categories = Category::where('name', 'like', "%{$q}%")
+            ->when($type, fn ($query) => $query->where('type', $type))
+            ->orderBy('type')
+            ->orderBy('name')
+            ->limit(20)
+            ->get();
+
+        return response()->json(
+            $categories->map(fn ($cat) => [
+                'id'   => $cat->id,
+                'name' => $cat->name,
+                'type' => $cat->type,
+            ])
+        );
+    }
 }

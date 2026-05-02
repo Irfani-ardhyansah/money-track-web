@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Wallet;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -103,6 +104,79 @@ class WalletBalanceService
         $rolled = $this->rollupBalances($direct);
 
         $all = Wallet::with('children')->whereNull('parent_id')->get();
+
+        return $all->map(function (Wallet $wallet) use ($direct, $rolled) {
+            $wallet->balance = $rolled->get($wallet->id, 0);
+
+            $wallet->setRelation(
+                'children',
+                $wallet->children->map(function (Wallet $child) use ($direct) {
+                    $child->balance = $direct->get($child->id, 0);
+
+                    return $child;
+                })
+            );
+
+            return $wallet;
+        });
+    }
+
+    /**
+     * Wallet tree with net activity for the given month only (not cumulative).
+     * income + transfer_in - expense - transfer_out within that month/year.
+     * Wallets with no activity in the month will show 0.
+     */
+    public function walletTreeForMonth(int $month, int $year): Collection
+    {
+        $walletIds = Wallet::pluck('id');
+
+        $base = fn ($query) => $query
+            ->whereYear('occurred_at', $year)
+            ->whereMonth('occurred_at', $month);
+
+        $income = DB::table('transactions')
+            ->whereIn('wallet_id', $walletIds)
+            ->where('type', 'income')
+            ->when(true, $base)
+            ->groupBy('wallet_id')
+            ->select('wallet_id', DB::raw('SUM(amount) as total'))
+            ->pluck('total', 'wallet_id');
+
+        $expense = DB::table('transactions')
+            ->whereIn('wallet_id', $walletIds)
+            ->where('type', 'expense')
+            ->when(true, $base)
+            ->groupBy('wallet_id')
+            ->select('wallet_id', DB::raw('SUM(amount) as total'))
+            ->pluck('total', 'wallet_id');
+
+        $transferOut = DB::table('transactions')
+            ->whereIn('wallet_id', $walletIds)
+            ->where('type', 'transfer')
+            ->when(true, $base)
+            ->groupBy('wallet_id')
+            ->select('wallet_id', DB::raw('SUM(amount) as total'))
+            ->pluck('total', 'wallet_id');
+
+        $transferIn = DB::table('transactions')
+            ->whereIn('to_wallet_id', $walletIds)
+            ->where('type', 'transfer')
+            ->when(true, $base)
+            ->groupBy('to_wallet_id')
+            ->select('to_wallet_id', DB::raw('SUM(amount) as total'))
+            ->pluck('total', 'to_wallet_id');
+
+        $direct = $walletIds->mapWithKeys(function ($id) use ($income, $expense, $transferOut, $transferIn) {
+            return [$id => (float) (
+                $income->get($id, 0)
+                + $transferIn->get($id, 0)
+                - $expense->get($id, 0)
+                - $transferOut->get($id, 0)
+            )];
+        });
+
+        $rolled = $this->rollupBalances($direct);
+        $all    = Wallet::with('children')->whereNull('parent_id')->get();
 
         return $all->map(function (Wallet $wallet) use ($direct, $rolled) {
             $wallet->balance = $rolled->get($wallet->id, 0);
