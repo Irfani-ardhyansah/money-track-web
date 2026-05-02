@@ -9,8 +9,7 @@ use Illuminate\Support\Facades\DB;
 class WalletBalanceService
 {
     /**
-     * Return balance for a single wallet.
-     * Balance = sum(income) + sum(incoming transfers) - sum(expense) - sum(outgoing transfers)
+     * Return balance for a single wallet (direct transactions only, no children).
      */
     public function balanceFor(Wallet $wallet): float
     {
@@ -38,7 +37,8 @@ class WalletBalanceService
     }
 
     /**
-     * Return a keyed Collection [wallet_id => balance] for all non-deleted wallets.
+     * Return a keyed Collection [wallet_id => direct_balance] for all non-deleted wallets.
+     * Each wallet's balance is based solely on transactions assigned directly to that wallet.
      */
     public function allBalances(): Collection
     {
@@ -83,26 +83,62 @@ class WalletBalanceService
     }
 
     /**
+     * Return [wallet_id => balance] where each parent wallet's balance
+     * includes the sum of all its direct children's balances.
+     * Child wallet entries remain unchanged (direct balance only).
+     */
+    public function allBalancesWithRollup(): Collection
+    {
+        return $this->rollupBalances($this->allBalances());
+    }
+
+    /**
      * Build hierarchical wallet tree with balances attached.
-     * Returns only root wallets (parent_id = null) with nested `children`.
+     * - Parent wallet balance = own direct balance + sum of all children's direct balances.
+     * - Child wallet balance  = own direct balance only.
      */
     public function walletTree(): Collection
     {
-        $balances = $this->allBalances();
+        $direct = $this->allBalances();
+        $rolled = $this->rollupBalances($direct);
 
         $all = Wallet::with('children')->whereNull('parent_id')->get();
 
-        return $all->map(fn ($w) => $this->attachBalance($w, $balances));
+        return $all->map(function (Wallet $wallet) use ($direct, $rolled) {
+            $wallet->balance = $rolled->get($wallet->id, 0);
+
+            $wallet->setRelation(
+                'children',
+                $wallet->children->map(function (Wallet $child) use ($direct) {
+                    $child->balance = $direct->get($child->id, 0);
+
+                    return $child;
+                })
+            );
+
+            return $wallet;
+        });
     }
 
-    private function attachBalance(Wallet $wallet, Collection $balances): Wallet
+    /**
+     * Given a [wallet_id => balance] collection, return a new collection where
+     * each parent wallet's value is augmented by the sum of its children's values.
+     */
+    private function rollupBalances(Collection $direct): Collection
     {
-        $wallet->balance = $balances->get($wallet->id, 0);
-        $wallet->setRelation(
-            'children',
-            $wallet->children->map(fn ($c) => $this->attachBalance($c, $balances))
-        );
+        // [child_id => parent_id] for wallets that have a parent
+        $childToParent = Wallet::whereNotNull('parent_id')
+            ->pluck('parent_id', 'id');
 
-        return $wallet;
+        $rolled = $direct->map(fn ($b) => $b); // shallow copy
+
+        foreach ($childToParent as $childId => $parentId) {
+            if ($rolled->has($parentId)) {
+                $rolled[$parentId] = $rolled->get($parentId, 0)
+                    + $direct->get($childId, 0);
+            }
+        }
+
+        return $rolled;
     }
 }

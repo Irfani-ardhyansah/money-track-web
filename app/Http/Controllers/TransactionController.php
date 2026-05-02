@@ -7,10 +7,13 @@ use App\Http\Requests\UpdateTransactionRequest;
 use App\Models\Category;
 use App\Models\Transaction;
 use App\Models\Wallet;
+use App\Services\WalletBalanceService;
 use Illuminate\Http\Request;
 
 class TransactionController extends Controller
 {
+    public function __construct(private WalletBalanceService $balanceService) {}
+
     public function index(Request $request)
     {
         $query = Transaction::with(['wallet', 'toWallet', 'category'])
@@ -41,10 +44,11 @@ class TransactionController extends Controller
 
     public function create()
     {
-        $wallets = Wallet::orderBy('name')->get();
+        $wallets = Wallet::with('parent')->orderBy('name')->get();
         $categories = Category::orderBy('type')->orderBy('name')->get();
+        $balances = $this->balanceService->allBalancesWithRollup();
 
-        return view('transactions.create', compact('wallets', 'categories'));
+        return view('transactions.create', compact('wallets', 'categories', 'balances'));
     }
 
     public function store(StoreTransactionRequest $request)
@@ -72,10 +76,11 @@ class TransactionController extends Controller
 
     public function edit(Transaction $transaction)
     {
-        $wallets = Wallet::orderBy('name')->get();
+        $wallets = Wallet::with('parent')->orderBy('name')->get();
         $categories = Category::orderBy('type')->orderBy('name')->get();
+        $balances = $this->balanceService->allBalancesWithRollup();
 
-        return view('transactions.edit', compact('transaction', 'wallets', 'categories'));
+        return view('transactions.edit', compact('transaction', 'wallets', 'categories', 'balances'));
     }
 
     public function update(UpdateTransactionRequest $request, Transaction $transaction)
