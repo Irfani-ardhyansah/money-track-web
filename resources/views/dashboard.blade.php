@@ -41,30 +41,51 @@
         </div>
     </div>
 
-    {{-- Wallet balances --}}
+    {{-- Wallet balances — spendable wallets (monthly activity) --}}
     <div class="px-4 mb-2">
         <div class="flex items-center justify-between mb-2">
             <div>
-                <h2 class="text-sm font-semibold text-zinc-400">Aktivitas Dompet</h2>
-                <p class="text-[10px] text-zinc-600 mt-0.5">{{ \Carbon\Carbon::create($year, $month)->locale('id')->isoFormat('MMMM YYYY') }}</p>
+                <h2 class="text-sm font-semibold text-zinc-400">Dompet Aktif</h2>
+                <p class="text-[10px] text-zinc-600 mt-0.5">Aktivitas {{ \Carbon\Carbon::create($year, $month)->locale('id')->isoFormat('MMMM YYYY') }}</p>
             </div>
             <a href="{{ route('wallets.index') }}" class="text-xs text-emerald-400">Lihat semua</a>
         </div>
         <div class="space-y-2">
-            @forelse($walletTree as $wallet)
+            @forelse($walletTreeMonth as $wallet)
+                @php
+                $savingTypes      = ['savings', 'investment'];
+                $typeLabels       = ['cash' => 'Tunai', 'bank' => 'Bank', 'e-wallet' => 'Dompet Digital', 'other' => 'Lainnya', 'general' => 'Umum'];
+                $spendableKids    = $wallet->children->filter(fn($c) => ! in_array($c->type, $savingTypes))->values();
+                $savingsKids      = $wallet->children->filter(fn($c) => in_array($c->type, $savingTypes))->values();
+                $spendableBalance = $wallet->balance - $savingsKids->sum('balance');
+                $hasMixed         = $spendableKids->isNotEmpty() && $savingsKids->isNotEmpty();
+                @endphp
                 <div class="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3">
+
+                    {{-- Header: name + total balance --}}
                     <div class="flex items-center justify-between">
                         <div>
-                            <p class="text-sm font-medium">{{ $wallet->name }}</p>
-                            <p class="text-xs text-zinc-500 capitalize">{{ $wallet->type }}</p>
+                            <p class="text-sm font-semibold">{{ $wallet->name }}</p>
+                            <p class="text-xs text-zinc-500">{{ $typeLabels[$wallet->type] ?? ucfirst($wallet->type) }}</p>
                         </div>
-                        <span class="text-sm font-semibold {{ $wallet->balance >= 0 ? 'text-zinc-100' : 'text-rose-400' }}">
-                            {{ ($wallet->balance < 0 ? '-' : '') . 'Rp '.number_format(abs($wallet->balance), 0, ',', '.') }}
-                        </span>
+                        <div class="text-right">
+                            <span class="text-sm font-semibold {{ $wallet->balance >= 0 ? 'text-zinc-100' : 'text-rose-400' }}">
+                                {{ ($spendableBalance < 0 ? '-' : '') }}Rp {{ number_format(abs($spendableBalance), 0, ',', '.') }}
+                            </span>
+                            {{-- Show spendable sub-label only when there are mixed children --}}
+                            @if($hasMixed)
+                                <p class="text-[10px] text-zinc-600 mt-0.5">
+                                    Total {{ ($wallet->balance < 0 ? '-' : '') . 'Rp '.number_format(abs($wallet->balance), 0, ',', '.') }}
+                                </p>
+                            @endif
+                        </div>
                     </div>
+
                     @if($wallet->children->isNotEmpty())
                         <div class="mt-2 space-y-1 pl-3 border-l border-zinc-700">
-                            @foreach($wallet->children as $child)
+
+                            {{-- Spendable children --}}
+                            @foreach($spendableKids as $child)
                                 <div class="flex items-center justify-between">
                                     <p class="text-xs text-zinc-400">{{ $child->name }}</p>
                                     <span class="text-xs {{ $child->balance >= 0 ? 'text-zinc-300' : 'text-rose-400' }}">
@@ -72,17 +93,86 @@
                                     </span>
                                 </div>
                             @endforeach
+
+                            {{-- Savings / investment children — visually separated --}}
+                            @if($savingsKids->isNotEmpty())
+                                @if($spendableKids->isNotEmpty())
+                                    <div class="flex items-center gap-2 pt-1 pb-0.5">
+                                        <div class="flex-1 h-px bg-zinc-800"></div>
+                                        <span class="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Tabungan / Investasi</span>
+                                        <div class="flex-1 h-px bg-zinc-800"></div>
+                                    </div>
+                                @endif
+                                @foreach($savingsKids as $child)
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="w-1 h-1 rounded-full bg-emerald-600 shrink-0"></span>
+                                            <p class="text-xs text-zinc-500">{{ $child->name }}</p>
+                                        </div>
+                                        <span class="text-xs {{ $child->balance >= 0 ? 'text-emerald-500/80' : 'text-rose-400' }}">
+                                            {{ ($child->balance < 0 ? '-' : '') . 'Rp '.number_format(abs($child->balance), 0, ',', '.') }}
+                                        </span>
+                                    </div>
+                                @endforeach
+                            @endif
+
                         </div>
                     @endif
                 </div>
             @empty
                 <div class="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-6 text-center">
-                    <p class="text-sm text-zinc-500">Belum ada dompet.</p>
+                    <p class="text-sm text-zinc-500">Belum ada dompet aktif.</p>
                     <a href="{{ route('wallets.create') }}" class="text-sm text-emerald-400 mt-1 inline-block">+ Tambah dompet</a>
                 </div>
             @endforelse
         </div>
     </div>
+
+    {{-- Savings / Investment wallets (cumulative saldo) --}}
+    @if($walletTreeSavings->isNotEmpty())
+    <div class="px-4 mb-4">
+        <div class="flex items-center justify-between mb-2">
+            <div>
+                <h2 class="text-sm font-semibold text-zinc-400">Tabungan & Investasi</h2>
+                <p class="text-[10px] text-zinc-600 mt-0.5">Total saldo kumulatif</p>
+            </div>
+            <a href="{{ route('savings.index') }}" class="text-xs text-emerald-400">Detail</a>
+        </div>
+        <div class="space-y-2">
+            @foreach($walletTreeSavings as $wallet)
+                @php
+                $savingsTypeLabels = ['savings' => 'Tabungan', 'investment' => 'Investasi'];
+                @endphp
+                <div class="bg-zinc-900 border border-emerald-900/40 rounded-2xl px-4 py-3">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                            <div>
+                                <p class="text-sm font-medium">{{ $wallet->name }}</p>
+                                <p class="text-xs text-emerald-700">{{ $savingsTypeLabels[$wallet->type] ?? ucfirst($wallet->type) }}</p>
+                            </div>
+                        </div>
+                        <span class="text-sm font-semibold {{ $wallet->balance >= 0 ? 'text-emerald-400' : 'text-rose-400' }}">
+                            {{ ($wallet->balance < 0 ? '-' : '') . 'Rp '.number_format(abs($wallet->balance), 0, ',', '.') }}
+                        </span>
+                    </div>
+                    @if($wallet->children->isNotEmpty())
+                        <div class="mt-2 space-y-1 pl-5 border-l border-emerald-900/50">
+                            @foreach($wallet->children as $child)
+                                <div class="flex items-center justify-between">
+                                    <p class="text-xs text-zinc-400">{{ $child->name }}</p>
+                                    <span class="text-xs {{ $child->balance >= 0 ? 'text-emerald-400/70' : 'text-rose-400' }}">
+                                        {{ ($child->balance < 0 ? '-' : '') . 'Rp '.number_format(abs($child->balance), 0, ',', '.') }}
+                                    </span>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+                </div>
+            @endforeach
+        </div>
+    </div>
+    @endif
 
     {{-- Category breakdown --}}
     @if($breakdown->isNotEmpty())

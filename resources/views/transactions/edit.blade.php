@@ -22,10 +22,56 @@
         </form>
     </div>
 
+    @php
+    $initWalletId     = old('wallet_id', $transaction->wallet_id);
+    $initWalletObj    = $initWalletId ? $wallets->firstWhere('id', $initWalletId) : null;
+    $initWalletLabel  = $initWalletObj
+        ? ($initWalletObj->parent ? $initWalletObj->parent->name . ' › ' . $initWalletObj->name : $initWalletObj->name)
+        : '';
+    $initWalletBal    = $initWalletObj ? (float) $balances->get($initWalletObj->id, 0) : null;
+
+    $initToWalletId    = old('to_wallet_id', $transaction->to_wallet_id);
+    $initToWalletObj   = $initToWalletId ? $wallets->firstWhere('id', $initToWalletId) : null;
+    $initToWalletLabel = $initToWalletObj
+        ? ($initToWalletObj->parent ? $initToWalletObj->parent->name . ' › ' . $initToWalletObj->name : $initToWalletObj->name)
+        : '';
+    $initToWalletBal   = $initToWalletObj ? (float) $balances->get($initToWalletObj->id, 0) : null;
+
+    // Cast to int to strip decimal zeros before passing to JS (prevents 500000.00 → 50000000 bug)
+    $rawAmount = old('amount', (int) $transaction->amount);
+    @endphp
+
     <form method="POST" action="{{ route('transactions.update', $transaction) }}" id="txForm" class="px-4 space-y-4">
         @csrf @method('PATCH')
 
-        {{-- Type selector --}}
+        {{-- 1. Wallet (top) --}}
+        <div>
+            <label class="block text-sm text-zinc-400 mb-1.5">Dompet</label>
+            <x-wallet-search
+                name="wallet_id"
+                :initialId="$initWalletId"
+                :initialLabel="$initWalletLabel"
+                :initialBalance="$initWalletBal"
+                placeholder="Cari dompet..."
+            />
+            @error('wallet_id')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
+        </div>
+
+        {{-- 2. To wallet (transfer only) --}}
+        <div id="toWalletField" class="{{ old('type', $transaction->type) !== 'transfer' ? 'hidden' : '' }}">
+            <label class="block text-sm text-zinc-400 mb-1.5">Ke Dompet</label>
+            <x-wallet-search
+                name="to_wallet_id"
+                :initialId="$initToWalletId"
+                :initialLabel="$initToWalletLabel"
+                :initialBalance="$initToWalletBal"
+                color="blue"
+                placeholder="Cari dompet tujuan..."
+            />
+            @error('to_wallet_id')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
+        </div>
+
+        {{-- 3. Type --}}
         <div>
             <label class="block text-sm text-zinc-400 mb-2">Jenis</label>
             <div class="grid grid-cols-3 gap-2">
@@ -43,19 +89,32 @@
             @error('type')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
         </div>
 
+        {{-- 4. Amount + quick-add chips --}}
         <div>
             <label class="block text-sm text-zinc-400 mb-1.5">Jumlah</label>
-            <div class="relative">
+            <div class="relative mb-2">
                 <span class="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 text-base font-medium pointer-events-none">Rp</span>
                 <input type="text" id="amount_display"
                        inputmode="numeric"
                        autocomplete="off"
-                       class="w-full bg-zinc-800 border border-zinc-700 text-zinc-100 text-base rounded-xl pl-10 pr-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none">
-                <input type="hidden" name="amount" id="amount_hidden" value="{{ old('amount', $transaction->amount) }}">
+                       placeholder="0"
+                       class="w-full bg-zinc-800 border border-zinc-700 text-zinc-100 text-base rounded-xl pl-10 pr-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none placeholder:text-zinc-600">
+                <input type="hidden" name="amount" id="amount_hidden" value="{{ $rawAmount }}">
+            </div>
+            {{-- Quick-add chips --}}
+            <div class="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-none">
+                @foreach([10000 => '10rb', 50000 => '50rb', 100000 => '100rb', 200000 => '200rb', 500000 => '500rb', 1000000 => '1jt', 2000000 => '2jt', 5000000 => '5jt'] as $value => $label)
+                    <button type="button"
+                            data-quick="{{ $value }}"
+                            class="quick-add shrink-0 px-3 py-1.5 text-xs font-medium rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400 hover:border-emerald-600 hover:text-emerald-400 active:bg-emerald-900/30 transition-colors">
+                        {{ $label }}
+                    </button>
+                @endforeach
             </div>
             @error('amount')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
         </div>
 
+        {{-- 5. Date --}}
         <div>
             <label class="block text-sm text-zinc-400 mb-1.5">Tanggal</label>
             <input type="date" name="occurred_at" value="{{ old('occurred_at', $transaction->occurred_at->format('Y-m-d')) }}"
@@ -63,47 +122,7 @@
             @error('occurred_at')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
         </div>
 
-        @php
-        $initWalletId     = old('wallet_id', $transaction->wallet_id);
-        $initWalletObj    = $initWalletId ? $wallets->firstWhere('id', $initWalletId) : null;
-        $initWalletLabel  = $initWalletObj
-            ? ($initWalletObj->parent ? $initWalletObj->parent->name . ' › ' . $initWalletObj->name : $initWalletObj->name)
-            : '';
-        $initWalletBal    = $initWalletObj ? (float) $balances->get($initWalletObj->id, 0) : null;
-
-        $initToWalletId    = old('to_wallet_id', $transaction->to_wallet_id);
-        $initToWalletObj   = $initToWalletId ? $wallets->firstWhere('id', $initToWalletId) : null;
-        $initToWalletLabel = $initToWalletObj
-            ? ($initToWalletObj->parent ? $initToWalletObj->parent->name . ' › ' . $initToWalletObj->name : $initToWalletObj->name)
-            : '';
-        $initToWalletBal   = $initToWalletObj ? (float) $balances->get($initToWalletObj->id, 0) : null;
-        @endphp
-
-        <div>
-            <label class="block text-sm text-zinc-400 mb-1.5">Dompet</label>
-            <x-wallet-search
-                name="wallet_id"
-                :initialId="$initWalletId"
-                :initialLabel="$initWalletLabel"
-                :initialBalance="$initWalletBal"
-                placeholder="Cari dompet..."
-            />
-            @error('wallet_id')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
-        </div>
-
-        <div id="toWalletField" class="{{ old('type', $transaction->type) !== 'transfer' ? 'hidden' : '' }}">
-            <label class="block text-sm text-zinc-400 mb-1.5">Ke Dompet</label>
-            <x-wallet-search
-                name="to_wallet_id"
-                :initialId="$initToWalletId"
-                :initialLabel="$initToWalletLabel"
-                :initialBalance="$initToWalletBal"
-                color="blue"
-                placeholder="Cari dompet tujuan..."
-            />
-            @error('to_wallet_id')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
-        </div>
-
+        {{-- 6. Category --}}
         @php
         $initCatId  = old('category_id', $transaction->category_id);
         $initCatObj = $initCatId ? $categories->firstWhere('id', $initCatId) : null;
@@ -118,10 +137,12 @@
             @error('category_id')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
         </div>
 
+        {{-- 7. Notes --}}
         <div>
             <label class="block text-sm text-zinc-400 mb-1.5">Catatan (opsional)</label>
             <textarea name="notes" rows="2"
-                      class="w-full bg-zinc-800 border border-zinc-700 text-zinc-100 text-base rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none resize-none">{{ old('notes', $transaction->notes) }}</textarea>
+                      placeholder="Catatan tambahan..."
+                      class="w-full bg-zinc-800 border border-zinc-700 text-zinc-100 text-base rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none placeholder:text-zinc-600 resize-none">{{ old('notes', $transaction->notes) }}</textarea>
             @error('notes')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
         </div>
 
@@ -132,7 +153,7 @@
     </form>
 
     <script>
-        // ── Amount formatter ─────────────────────────────────────────
+        // ── Amount formatter ──────────────────────────────────────────
         const amountDisplay = document.getElementById('amount_display');
         const amountHidden  = document.getElementById('amount_hidden');
 
@@ -141,23 +162,37 @@
             return isNaN(num) ? '' : num.toLocaleString('id-ID');
         }
 
+        function setAmount(num) {
+            amountHidden.value  = num;
+            amountDisplay.value = num ? num.toLocaleString('id-ID') : '';
+        }
+
         amountDisplay.addEventListener('input', function () {
-            const raw     = this.value.replace(/\D/g, '');
-            const prevLen = this.value.length;
-            const cursor  = this.selectionStart;
-            this.value    = raw ? toRupiah(raw) : '';
+            const raw      = this.value.replace(/\D/g, '');
+            const prevLen  = this.value.length;
+            const cursor   = this.selectionStart;
+            this.value     = raw ? toRupiah(raw) : '';
             amountHidden.value = raw;
             const diff = this.value.length - prevLen;
             this.setSelectionRange(cursor + diff, cursor + diff);
         });
 
-        // Populate display field from existing value on page load
+        // Populate display from existing value — amountHidden is already integer (no decimal)
         if (amountHidden.value) {
             amountDisplay.value = toRupiah(amountHidden.value);
         }
 
+        // ── Quick-add chips ───────────────────────────────────────────
+        document.querySelectorAll('.quick-add').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const add = parseInt(this.dataset.quick, 10);
+                const cur = parseInt(amountHidden.value || '0', 10);
+                setAmount(cur + add);
+            });
+        });
+
         // ── Type selector ─────────────────────────────────────────────
-        const labels = document.querySelectorAll('.type-label');
+        const labels        = document.querySelectorAll('.type-label');
         const toWalletField = document.getElementById('toWalletField');
         const categoryField = document.getElementById('categoryField');
 

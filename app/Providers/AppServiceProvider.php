@@ -7,6 +7,7 @@ use App\Models\Transaction;
 use App\Observers\SavingsAdjustmentObserver;
 use App\Observers\TransactionObserver;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\URL;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -14,6 +15,9 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        if (request()->isSecure() || str_contains(request()->getHost(), 'ngrok')) {
+            URL::forceScheme('https');
+        }
         Transaction::observe(TransactionObserver::class);
         SavingsAdjustment::observe(SavingsAdjustmentObserver::class);
     }

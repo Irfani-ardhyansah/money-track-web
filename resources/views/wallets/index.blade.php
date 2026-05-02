@@ -20,9 +20,6 @@
                         <p class="text-xs text-zinc-500 capitalize">{{ $wallet->type }}</p>
                     </div>
                     <div class="flex items-center gap-3">
-                        <span class="text-sm font-semibold {{ $wallet->balance >= 0 ? 'text-zinc-100' : 'text-rose-400' }}">
-                            {{ ($wallet->balance < 0 ? '-' : '') . 'Rp '.number_format(abs($wallet->balance), 0, ',', '.') }}
-                        </span>
                         <div class="flex items-center gap-2">
                             <a href="{{ route('wallets.edit', $wallet) }}"
                                class="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 hover:text-zinc-200 transition-colors">
@@ -53,9 +50,6 @@
                                     <p class="text-xs text-zinc-500 capitalize">{{ $child->type }}</p>
                                 </div>
                                 <div class="flex items-center gap-3">
-                                    <span class="text-sm {{ $child->balance >= 0 ? 'text-zinc-300' : 'text-rose-400' }}">
-                                        {{ ($child->balance < 0 ? '-' : '') . 'Rp '.number_format(abs($child->balance), 0, ',', '.') }}
-                                    </span>
                                     <div class="flex items-center gap-2">
                                         <a href="{{ route('wallets.edit', $child) }}"
                                            class="w-7 h-7 rounded-lg bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-zinc-400 hover:text-zinc-200 transition-colors">

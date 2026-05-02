@@ -17,14 +17,31 @@ class DashboardController extends Controller
     public function index(Request $request)
     {
         $month = (int) $request->query('month', now()->month);
-        $year = (int) $request->query('year', now()->year);
+        $year  = (int) $request->query('year', now()->year);
 
-        $summary = $this->reportService->monthlySummary($month, $year);
-        $breakdown = $this->reportService->categoryBreakdown($month, $year);
-        $recent = $this->reportService->recentTransactions(10);
-        $walletTree = $this->walletBalanceService->walletTreeForMonth($month, $year);
+        $summary    = $this->reportService->monthlySummary($month, $year);
+        $breakdown  = $this->reportService->categoryBreakdown($month, $year);
+        $recent     = $this->reportService->recentTransactions(10);
 
-        return view('dashboard', compact('summary', 'breakdown', 'recent', 'walletTree', 'month', 'year'));
+        $savingsTypes  = ['savings', 'investment'];
+
+        // Monthly activity — only regular (spendable) wallets
+        $walletTreeMonth = $this->walletBalanceService
+            ->walletTreeForMonth($month, $year)
+            ->filter(fn ($w) => ! in_array($w->type, $savingsTypes))
+            ->values();
+
+        // Cumulative saldo — only savings/investment wallets
+        $walletTreeSavings = $this->walletBalanceService
+            ->walletTree()
+            ->filter(fn ($w) => in_array($w->type, $savingsTypes))
+            ->values();
+
+        return view('dashboard', compact(
+            'summary', 'breakdown', 'recent',
+            'walletTreeMonth', 'walletTreeSavings',
+            'month', 'year'
+        ));
     }
 
     public function categoryTransactions(Request $request)
