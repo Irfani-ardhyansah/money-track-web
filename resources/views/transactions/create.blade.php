@@ -1,0 +1,151 @@
+<x-layouts.app :title="'Tambah Transaksi'">
+
+    <div class="flex items-center gap-3 px-4 pt-5 pb-4">
+        <a href="{{ route('transactions.index') }}"
+           class="w-9 h-9 rounded-xl bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/>
+            </svg>
+        </a>
+        <h1 class="text-lg font-semibold">Catat Transaksi</h1>
+    </div>
+
+    <form method="POST" action="{{ route('transactions.store') }}" id="txForm" class="px-4 space-y-4">
+        @csrf
+
+        {{-- Type selector --}}
+        <div>
+            <label class="block text-sm text-zinc-400 mb-2">Jenis</label>
+            <div class="grid grid-cols-3 gap-2">
+                @foreach(['expense' => ['Pengeluaran', 'rose'], 'income' => ['Pemasukan', 'emerald'], 'transfer' => ['Transfer', 'blue']] as $val => [$label, $color])
+                    <label class="type-label flex flex-col items-center gap-1.5 bg-zinc-800 border rounded-xl px-2 py-3 cursor-pointer transition-colors
+                                  {{ old('type', 'expense') === $val ? "border-{$color}-500 bg-{$color}-900/30" : 'border-zinc-700' }}"
+                           data-color="{{ $color }}">
+                        <input type="radio" name="type" value="{{ $val }}" class="hidden" {{ old('type', 'expense') === $val ? 'checked' : '' }}>
+                        <span class="w-2.5 h-2.5 rounded-full bg-{{ $color }}-400"></span>
+                        <span class="text-xs font-medium">{{ $label }}</span>
+                    </label>
+                @endforeach
+            </div>
+            @error('type')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
+        </div>
+
+        {{-- Amount --}}
+        <div>
+            <label class="block text-sm text-zinc-400 mb-1.5">Jumlah (Rp)</label>
+            <input type="number" name="amount" value="{{ old('amount') }}"
+                   min="1" step="any"
+                   placeholder="0"
+                   class="w-full bg-zinc-800 border border-zinc-700 text-zinc-100 text-base rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none placeholder:text-zinc-600">
+            @error('amount')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
+        </div>
+
+        {{-- Date --}}
+        <div>
+            <label class="block text-sm text-zinc-400 mb-1.5">Tanggal</label>
+            <input type="date" name="occurred_at" value="{{ old('occurred_at', now()->format('Y-m-d')) }}"
+                   class="w-full bg-zinc-800 border border-zinc-700 text-zinc-300 text-base rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none">
+            @error('occurred_at')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
+        </div>
+
+        {{-- Wallet --}}
+        <div>
+            <label class="block text-sm text-zinc-400 mb-1.5" id="walletLabel">Dompet</label>
+            <select name="wallet_id"
+                    class="w-full bg-zinc-800 border border-zinc-700 text-zinc-100 text-base rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none">
+                <option value="">— Pilih dompet —</option>
+                @foreach($wallets as $wallet)
+                    <option value="{{ $wallet->id }}" @selected(old('wallet_id') == $wallet->id)>
+                        {{ $wallet->name }}
+                    </option>
+                @endforeach
+            </select>
+            @error('wallet_id')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
+        </div>
+
+        {{-- To wallet (transfer only) --}}
+        <div id="toWalletField" class="{{ old('type', 'expense') !== 'transfer' ? 'hidden' : '' }}">
+            <label class="block text-sm text-zinc-400 mb-1.5">Ke Dompet</label>
+            <select name="to_wallet_id"
+                    class="w-full bg-zinc-800 border border-zinc-700 text-zinc-100 text-base rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+                <option value="">— Pilih dompet tujuan —</option>
+                @foreach($wallets as $wallet)
+                    <option value="{{ $wallet->id }}" @selected(old('to_wallet_id') == $wallet->id)>
+                        {{ $wallet->name }}
+                    </option>
+                @endforeach
+            </select>
+            @error('to_wallet_id')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
+        </div>
+
+        {{-- Category (income/expense only) --}}
+        <div id="categoryField" class="{{ old('type', 'expense') === 'transfer' ? 'hidden' : '' }}">
+            <label class="block text-sm text-zinc-400 mb-1.5">Kategori</label>
+            <select name="category_id"
+                    class="w-full bg-zinc-800 border border-zinc-700 text-zinc-100 text-base rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none">
+                <option value="">— Pilih kategori —</option>
+                @foreach($categories->groupBy('type') as $type => $group)
+                    <optgroup label="{{ $type === 'income' ? 'Pemasukan' : 'Pengeluaran' }}">
+                        @foreach($group as $cat)
+                            <option value="{{ $cat->id }}" @selected(old('category_id') == $cat->id)>{{ $cat->name }}</option>
+                        @endforeach
+                    </optgroup>
+                @endforeach
+            </select>
+            @error('category_id')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
+        </div>
+
+        {{-- Notes --}}
+        <div>
+            <label class="block text-sm text-zinc-400 mb-1.5">Catatan (opsional)</label>
+            <textarea name="notes" rows="2"
+                      placeholder="Catatan tambahan..."
+                      class="w-full bg-zinc-800 border border-zinc-700 text-zinc-100 text-base rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none placeholder:text-zinc-600 resize-none">{{ old('notes') }}</textarea>
+            @error('notes')<p class="text-rose-400 text-xs mt-1">{{ $message }}</p>@enderror
+        </div>
+
+        <button type="submit"
+                class="w-full bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold text-base rounded-xl py-3.5 transition-colors min-h-[44px] mt-2">
+            Simpan Transaksi
+        </button>
+    </form>
+
+    <script>
+        const labels = document.querySelectorAll('.type-label');
+        const toWalletField = document.getElementById('toWalletField');
+        const categoryField = document.getElementById('categoryField');
+
+        function updateTypeUI() {
+            const selected = document.querySelector('input[name="type"]:checked');
+            if (!selected) return;
+            const val = selected.value;
+
+            toWalletField.classList.toggle('hidden', val !== 'transfer');
+            categoryField.classList.toggle('hidden', val === 'transfer');
+
+            labels.forEach(label => {
+                const input = label.querySelector('input[name="type"]');
+                const color = label.dataset.color;
+                label.classList.remove(
+                    'border-emerald-500','bg-emerald-900/30',
+                    'border-rose-500','bg-rose-900/30',
+                    'border-blue-500','bg-blue-900/30',
+                    'border-zinc-700'
+                );
+                if (input.checked) {
+                    label.classList.add(`border-${color}-500`, `bg-${color}-900/30`);
+                } else {
+                    label.classList.add('border-zinc-700');
+                }
+            });
+        }
+
+        labels.forEach(label => {
+            label.addEventListener('click', () => {
+                label.querySelector('input[name="type"]').checked = true;
+                updateTypeUI();
+            });
+        });
+    </script>
+
+</x-layouts.app>

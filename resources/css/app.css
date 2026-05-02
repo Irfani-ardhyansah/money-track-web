@@ -1,0 +1,32 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme {
+    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+@layer base {
+    /* Prevent iOS auto-zoom on focused inputs */
+    input, select, textarea {
+        font-size: max(16px, 1rem);
+    }
+
+    /* Safe area bottom padding for notch devices */
+    .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    /* Hide scrollbar utility */
+    .scrollbar-none {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+    .scrollbar-none::-webkit-scrollbar {
+        display: none;
+    }
+}
