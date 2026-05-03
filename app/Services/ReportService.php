@@ -10,43 +10,141 @@ class ReportService
 {
     /**
      * Monthly income / expense / net summary.
-     * Transfer is excluded from both income and expense totals.
+     * Transfer to savings/investment wallets is tracked separately as `transfer_savings`.
+     * Transfer to wallets belonging to other top-level owners is tracked as `transfer_others`.
+     *
+     * @param int[]|null $ownerWalletIds  Limit to these wallet IDs (null = all).
+     * @param int[]|null $allOwnerIds     All wallet IDs of the selected owner (used to detect cross-owner transfers).
      */
-    public function monthlySummary(int $month, int $year): array
+    public function monthlySummary(int $month, int $year, ?array $ownerWalletIds = null, ?array $allOwnerIds = null): array
     {
+        $savingsTypes = ['savings', 'investment'];
+
         $income = Transaction::whereYear('occurred_at', $year)
             ->whereMonth('occurred_at', $month)
             ->where('type', 'income')
+            ->when($ownerWalletIds, fn ($q) => $q->whereIn('wallet_id', $ownerWalletIds))
             ->sum('amount');
 
         $expense = Transaction::whereYear('occurred_at', $year)
             ->whereMonth('occurred_at', $month)
             ->where('type', 'expense')
+            ->when($ownerWalletIds, fn ($q) => $q->whereIn('wallet_id', $ownerWalletIds))
             ->sum('amount');
 
+        $transferSavings = (float) DB::table('transactions')
+            ->join('wallets as tw', 'transactions.to_wallet_id', '=', 'tw.id')
+            ->whereYear('transactions.occurred_at', $year)
+            ->whereMonth('transactions.occurred_at', $month)
+            ->where('transactions.type', 'transfer')
+            ->whereIn('tw.type', $savingsTypes)
+            ->whereNull('tw.deleted_at')
+            ->when($ownerWalletIds, fn ($q) => $q->whereIn('transactions.wallet_id', $ownerWalletIds))
+            ->sum('transactions.amount');
+
+        // Transfers from this owner's wallets to wallets belonging to other top-level owners.
+        // Only computed when a specific owner is selected.
+        $transferOthers       = 0.0;
+        $transferOthersDetail = [];
+
+        if ($ownerWalletIds && $allOwnerIds) {
+            $rows = DB::table('transactions')
+                ->join('wallets as tw', 'transactions.to_wallet_id', '=', 'tw.id')
+                ->leftJoin('wallets as tpw', 'tw.parent_id', '=', 'tpw.id')
+                ->whereYear('transactions.occurred_at', $year)
+                ->whereMonth('transactions.occurred_at', $month)
+                ->where('transactions.type', 'transfer')
+                ->whereIn('transactions.wallet_id', $ownerWalletIds)
+                ->whereNotIn('transactions.to_wallet_id', $allOwnerIds)
+                ->whereNotIn('tw.type', $savingsTypes)
+                ->whereNull('tw.deleted_at')
+                ->groupBy(DB::raw('COALESCE(tw.parent_id, tw.id)'), DB::raw('COALESCE(tpw.name, tw.name)'))
+                ->select(
+                    DB::raw('COALESCE(tpw.name, tw.name) as dest_owner'),
+                    DB::raw('SUM(transactions.amount) as total')
+                )
+                ->get();
+
+            $transferOthers       = (float) $rows->sum('total');
+            $transferOthersDetail = $rows->map(fn ($r) => [
+                'name'   => $r->dest_owner,
+                'amount' => (float) $r->total,
+            ])->values()->all();
+        }
+
+        // Transfers INTO this owner's wallets from other top-level owners (cross-owner inflow).
+        // Only computed when a specific owner is selected.
+        $transferInOthers       = 0.0;
+        $transferInOthersDetail = [];
+
+        if ($ownerWalletIds && $allOwnerIds) {
+            $rows = DB::table('transactions')
+                ->join('wallets as sw', 'transactions.wallet_id', '=', 'sw.id')
+                ->leftJoin('wallets as spw', 'sw.parent_id', '=', 'spw.id')
+                ->whereYear('transactions.occurred_at', $year)
+                ->whereMonth('transactions.occurred_at', $month)
+                ->where('transactions.type', 'transfer')
+                ->whereIn('transactions.to_wallet_id', $ownerWalletIds)
+                ->whereNotIn('transactions.wallet_id', $allOwnerIds)
+                ->whereNull('sw.deleted_at')
+                ->groupBy(DB::raw('COALESCE(sw.parent_id, sw.id)'), DB::raw('COALESCE(spw.name, sw.name)'))
+                ->select(
+                    DB::raw('COALESCE(spw.name, sw.name) as source_owner'),
+                    DB::raw('SUM(transactions.amount) as total')
+                )
+                ->get();
+
+            $transferInOthers       = (float) $rows->sum('total');
+            $transferInOthersDetail = $rows->map(fn ($r) => [
+                'name'   => $r->source_owner,
+                'amount' => (float) $r->total,
+            ])->values()->all();
+        }
+
+        // Income breakdown by top-level owner — only computed when no owner filter (for "Semua" tooltip).
+        $incomeDetail = [];
+        if (! $ownerWalletIds) {
+            $rows = DB::table('transactions')
+                ->join('wallets as sw', 'transactions.wallet_id', '=', 'sw.id')
+                ->leftJoin('wallets as spw', 'sw.parent_id', '=', 'spw.id')
+                ->whereYear('transactions.occurred_at', $year)
+                ->whereMonth('transactions.occurred_at', $month)
+                ->where('transactions.type', 'income')
+                ->whereNull('sw.deleted_at')
+                ->groupBy(DB::raw('COALESCE(sw.parent_id, sw.id)'), DB::raw('COALESCE(spw.name, sw.name)'))
+                ->select(
+                    DB::raw('COALESCE(spw.name, sw.name) as owner_name'),
+                    DB::raw('SUM(transactions.amount) as total')
+                )
+                ->orderByDesc('total')
+                ->get();
+
+            $incomeDetail = $rows->map(fn ($r) => [
+                'name'   => $r->owner_name,
+                'amount' => (float) $r->total,
+            ])->values()->all();
+        }
+
         return [
-            'income' => (float) $income,
-            'expense' => (float) $expense,
-            'net' => (float) ($income - $expense),
+            'income'                    => (float) $income,
+            'income_detail'             => $incomeDetail,
+            'expense'                   => (float) $expense,
+            'transfer_savings'          => $transferSavings,
+            'transfer_others'           => $transferOthers,
+            'transfer_others_detail'    => $transferOthersDetail,
+            'transfer_in_others'        => $transferInOthers,
+            'transfer_in_others_detail' => $transferInOthersDetail,
+            'net'                       => (float) ($income + $transferInOthers - $expense - $transferSavings - $transferOthers),
         ];
     }
 
     /**
      * Category breakdown for a given month.
      *
-     * @param string $walletFilter  'all' | 'regular' | 'savings'
-     *   - all     : expense (all wallets, rose) + transfer to savings/investment wallets (violet)
-     *   - regular : expense transactions only (non-savings wallets)
-     *   - savings : transfer transactions whose destination is a savings/investment wallet
-     *
-     * Each returned object has:
-     *   category_id    – numeric category ID for expenses, null for transfer-to-savings rows
-     *   category_name  – category name or destination wallet name
-     *   amount         – float total
-     *   percentage     – float percentage of grand total
-     *   entry_type     – 'expense' | 'transfer_savings'
+     * @param string     $walletFilter   'all' | 'regular' | 'savings'
+     * @param int[]|null $ownerWalletIds Limit to these wallet IDs (null = all).
      */
-    public function categoryBreakdown(int $month, int $year, string $walletFilter = 'all'): Collection
+    public function categoryBreakdown(int $month, int $year, string $walletFilter = 'all', ?array $ownerWalletIds = null): Collection
     {
         $savingsTypes = ['savings', 'investment'];
         $items        = collect();
@@ -60,7 +158,8 @@ class ReportService
                 ->whereMonth('transactions.occurred_at', $month)
                 ->where('transactions.type', 'expense')
                 ->whereNull('categories.deleted_at')
-                ->whereNull('wallets.deleted_at');
+                ->whereNull('wallets.deleted_at')
+                ->when($ownerWalletIds, fn ($q) => $q->whereIn('transactions.wallet_id', $ownerWalletIds));
 
             if ($walletFilter === 'regular') {
                 $expQuery->whereNotIn('wallets.type', $savingsTypes);
@@ -84,27 +183,34 @@ class ReportService
             $items = $items->merge($expRows);
         }
 
-        // --- transfer-to-savings rows (grouped by destination wallet) ---
+        // --- transfer-to-savings rows (grouped by destination wallet + source parent wallet) ---
         if (in_array($walletFilter, ['all', 'savings'])) {
             $trRows = DB::table('transactions')
                 ->join('wallets as tw', 'transactions.to_wallet_id', '=', 'tw.id')
+                ->join('wallets as sw', 'transactions.wallet_id', '=', 'sw.id')
+                ->leftJoin('wallets as spw', 'sw.parent_id', '=', 'spw.id')
                 ->whereYear('transactions.occurred_at', $year)
                 ->whereMonth('transactions.occurred_at', $month)
                 ->where('transactions.type', 'transfer')
                 ->whereIn('tw.type', $savingsTypes)
                 ->whereNull('tw.deleted_at')
-                ->groupBy('transactions.to_wallet_id', 'tw.name')
+                ->whereNull('sw.deleted_at')
+                ->when($ownerWalletIds, fn ($q) => $q->whereIn('transactions.wallet_id', $ownerWalletIds))
+                ->groupBy('transactions.to_wallet_id', 'tw.name', 'sw.parent_id', 'sw.name', 'spw.name')
                 ->select(
                     'transactions.to_wallet_id',
                     'tw.name as wallet_name',
+                    'sw.parent_id as source_parent_id',
+                    DB::raw('COALESCE(spw.name, sw.name) as source_parent_name'),
                     DB::raw('SUM(transactions.amount) as total')
                 )
                 ->get()
                 ->map(fn ($r) => (object) [
-                    'category_id'   => null,
-                    'category_name' => $r->wallet_name,
-                    'amount'        => (float) $r->total,
-                    'entry_type'    => 'transfer_savings',
+                    'category_id'        => null,
+                    'category_name'      => $r->wallet_name,
+                    'source_parent_name' => $r->source_parent_name,
+                    'amount'             => (float) $r->total,
+                    'entry_type'         => 'transfer_savings',
                 ]);
 
             $items = $items->merge($trRows);
@@ -126,10 +232,13 @@ class ReportService
 
     /**
      * Recent transactions for dashboard preview (latest N).
+     *
+     * @param int[]|null $ownerWalletIds Limit to these wallet IDs (null = all).
      */
-    public function recentTransactions(int $limit = 5): Collection
+    public function recentTransactions(int $limit = 5, ?array $ownerWalletIds = null): Collection
     {
         return Transaction::with(['wallet', 'toWallet', 'category'])
+            ->when($ownerWalletIds, fn ($q) => $q->whereIn('wallet_id', $ownerWalletIds))
             ->orderByDesc('occurred_at')
             ->orderByDesc('id')
             ->limit($limit)

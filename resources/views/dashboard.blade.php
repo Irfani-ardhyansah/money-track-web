@@ -4,6 +4,15 @@
     <div class="flex items-center justify-between px-4 pt-5 pb-2">
         <h1 class="text-lg font-semibold">Ringkasan</h1>
         <form method="GET" action="{{ route('dashboard') }}" class="flex items-center gap-2">
+            <input type="hidden" name="breakdown_filter" value="{{ $breakdownFilter }}">
+            <select name="owner_id"
+                    onchange="this.form.submit()"
+                    class="bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm rounded-lg px-3 py-1.5 focus:ring-emerald-500 focus:border-emerald-500">
+                <option value="">Semua</option>
+                @foreach($rootWallets as $rw)
+                    <option value="{{ $rw->id }}" @selected($rw->id === $ownerId)>{{ $rw->name }}</option>
+                @endforeach
+            </select>
             <select name="month"
                     onchange="this.form.submit()"
                     class="bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm rounded-lg px-3 py-1.5 focus:ring-emerald-500 focus:border-emerald-500">
@@ -28,10 +37,86 @@
         <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 flex flex-col gap-1">
             <span class="text-xs text-zinc-500">Pemasukan</span>
             <span class="text-sm font-bold text-emerald-400">{{ 'Rp '.number_format($summary['income'], 0, ',', '.') }}</span>
+
+            {{-- Semua filter: income breakdown per owner --}}
+            @if(!$ownerId && count($summary['income_detail']) > 1)
+                <div class="relative" id="incomeDetailWrap">
+                    <button type="button" onclick="toggleIncomeDetail()"
+                            class="text-[11px] font-semibold text-emerald-600 flex items-center gap-1 w-full text-left">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-2.5 h-2.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/>
+                        </svg>
+                        Rincian
+                    </button>
+                    <div id="incomeDetailTooltip"
+                         class="hidden absolute bottom-full left-0 mb-1.5 bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 shadow-xl z-20 min-w-max">
+                        <p class="text-[10px] text-zinc-500 mb-1">Pemasukan per pemilik</p>
+                        @foreach($summary['income_detail'] as $d)
+                            <div class="flex items-center justify-between gap-4">
+                                <span class="text-xs text-zinc-300">{{ $d['name'] }}</span>
+                                <span class="text-xs font-semibold text-emerald-400">Rp {{ number_format($d['amount'], 0, ',', '.') }}</span>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
+            {{-- Owner filter: transfers received from other owners --}}
+            @if($ownerId && $summary['transfer_in_others'] > 0)
+                <div class="relative" id="transferInOthersWrap">
+                    <button type="button" onclick="toggleTransferInOthers()"
+                            class="text-[11px] font-semibold text-sky-400 flex items-center gap-1 w-full text-left">
+                        <span class="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0"></span>
+                        {{ 'Rp '.number_format($summary['transfer_in_others'], 0, ',', '.') }}
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-2.5 h-2.5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/>
+                        </svg>
+                    </button>
+                    <div id="transferInOthersTooltip"
+                         class="hidden absolute bottom-full left-0 mb-1.5 bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 shadow-xl z-20 min-w-max">
+                        <p class="text-[10px] text-zinc-500 mb-1">Transfer masuk dari</p>
+                        @foreach($summary['transfer_in_others_detail'] as $d)
+                            <div class="flex items-center justify-between gap-4">
+                                <span class="text-xs text-zinc-300">← {{ $d['name'] }}</span>
+                                <span class="text-xs font-semibold text-sky-400">Rp {{ number_format($d['amount'], 0, ',', '.') }}</span>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
         </div>
         <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 flex flex-col gap-1">
             <span class="text-xs text-zinc-500">Pengeluaran</span>
             <span class="text-sm font-bold text-rose-400">{{ 'Rp '.number_format($summary['expense'], 0, ',', '.') }}</span>
+            @if($summary['transfer_savings'] > 0)
+                <span class="text-[11px] font-semibold text-violet-400 flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0"></span>
+                    {{ 'Rp '.number_format($summary['transfer_savings'], 0, ',', '.') }}
+                </span>
+            @endif
+            @if($summary['transfer_others'] > 0)
+                <div class="relative" id="transferOthersWrap">
+                    <button type="button"
+                            onclick="toggleTransferOthers()"
+                            class="text-[11px] font-semibold text-amber-400 flex items-center gap-1 w-full text-left">
+                        <span class="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"></span>
+                        {{ 'Rp '.number_format($summary['transfer_others'], 0, ',', '.') }}
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-2.5 h-2.5 text-amber-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/>
+                        </svg>
+                    </button>
+                    <div id="transferOthersTooltip"
+                         class="hidden absolute bottom-full left-0 mb-1.5 bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 shadow-xl z-20 min-w-max">
+                        <p class="text-[10px] text-zinc-500 mb-1">Transfer ke</p>
+                        @foreach($summary['transfer_others_detail'] as $detail)
+                            <div class="flex items-center justify-between gap-4">
+                                <span class="text-xs text-zinc-300">→ {{ $detail['name'] }}</span>
+                                <span class="text-xs font-semibold text-amber-400">Rp {{ number_format($detail['amount'], 0, ',', '.') }}</span>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
         </div>
         <div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-3 flex flex-col gap-1">
             <span class="text-xs text-zinc-500">Selisih</span>
@@ -68,25 +153,20 @@
                 $spendableBalance = $wallet->balance - $savingsKids->sum('balance');
                 $hasMixed         = $spendableKids->isNotEmpty() && $savingsKids->isNotEmpty();
                 @endphp
+                @php
+                $savingsTotal = $savingsKids->sum('balance');
+                @endphp
                 <div class="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3">
 
-                    {{-- Header: name + total balance --}}
+                    {{-- Header: name + spendable balance only --}}
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-sm font-semibold">{{ $wallet->name }}</p>
                             <p class="text-xs text-zinc-500">{{ $typeLabels[$wallet->type] ?? ucfirst($wallet->type) }}</p>
                         </div>
-                        <div class="text-right">
-                            <span class="text-sm font-semibold {{ $wallet->balance >= 0 ? 'text-zinc-100' : 'text-rose-400' }}">
-                                {{ ($spendableBalance < 0 ? '-' : '') }}Rp {{ number_format(abs($spendableBalance), 0, ',', '.') }}
-                            </span>
-                            {{-- Show spendable sub-label only when there are mixed children --}}
-                            @if($hasMixed)
-                                <p class="text-[10px] text-zinc-600 mt-0.5">
-                                    Total {{ ($wallet->balance < 0 ? '-' : '') . 'Rp '.number_format(abs($wallet->balance), 0, ',', '.') }}
-                                </p>
-                            @endif
-                        </div>
+                        <span class="text-sm font-semibold {{ $spendableBalance >= 0 ? 'text-zinc-100' : 'text-rose-400' }}">
+                            {{ ($spendableBalance < 0 ? '-' : '') }}Rp {{ number_format(abs($spendableBalance), 0, ',', '.') }}
+                        </span>
                     </div>
 
                     @if($wallet->children->isNotEmpty())
@@ -102,21 +182,23 @@
                                 </div>
                             @endforeach
 
-                            {{-- Savings / investment children — visually separated with toggle --}}
+                            {{-- Savings / investment toggle — hint shows savings total even when collapsed --}}
                             @if($savingsKids->isNotEmpty())
                                 @php $toggleId = 'savings_kids_' . $wallet->id; @endphp
                                 <button type="button"
                                         onclick="(function(btn){var el=document.getElementById('{{ $toggleId }}');var icon=btn.querySelector('.chev');var hidden=el.classList.toggle('hidden');icon.style.transform=hidden?'':'rotate(180deg)';})(this)"
-                                        class="flex items-center gap-2 w-full pt-1 pb-0.5 group">
+                                        class="flex items-center gap-2 w-full pt-1.5 pb-0.5 group">
                                     <div class="flex-1 h-px bg-zinc-800"></div>
-                                    <span class="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 group-hover:text-emerald-600 transition-colors flex items-center gap-1">
-                                        Tabungan / Investasi
-                                        <svg class="chev w-3 h-3 text-emerald-700 transition-transform duration-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/>
+                                    <span class="text-[10px] font-semibold text-emerald-700 group-hover:text-emerald-600 transition-colors flex items-center gap-1 shrink-0">
+                                        <svg class="chev w-3 h-3 transition-transform duration-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/>
                                         </svg>
+                                        Tabungan
+                                        <span class="text-emerald-600">Rp {{ number_format(abs($savingsTotal), 0, ',', '.') }}</span>
                                     </span>
                                     <div class="flex-1 h-px bg-zinc-800"></div>
                                 </button>
+
                                 <div id="{{ $toggleId }}" class="hidden space-y-1">
                                     @foreach($savingsKids as $child)
                                         <div class="flex items-center justify-between">
@@ -129,6 +211,14 @@
                                             </span>
                                         </div>
                                     @endforeach
+
+                                    {{-- Total (spendable + savings) — only shown when expanded --}}
+                                    <div class="flex items-center justify-between pt-1.5 mt-0.5 border-t border-zinc-800">
+                                        <span class="text-[10px] uppercase tracking-wide text-zinc-600">Total</span>
+                                        <span class="text-xs font-semibold text-zinc-500">
+                                            {{ ($wallet->balance < 0 ? '-' : '') }}Rp {{ number_format(abs($wallet->balance), 0, ',', '.') }}
+                                        </span>
+                                    </div>
                                 </div>
                             @endif
 
@@ -205,7 +295,7 @@
             {{-- Filter chips + toggle --}}
             <div class="flex items-center gap-1.5">
                 @php
-                    $bfBase = ['month' => $month, 'year' => $year];
+                    $bfBase = ['month' => $month, 'year' => $year, 'owner_id' => $ownerId ?: ''];
                     $filters = [
                         'all'     => 'Semua',
                         'regular' => 'Aktif',
@@ -255,12 +345,16 @@
                 {{-- Transfer-to-savings row: not clickable --}}
                 <div class="w-full">
                     <div class="flex items-center justify-between mb-1">
-                        <span class="text-xs text-zinc-300 flex items-center gap-1.5">
+                        <span class="text-xs text-zinc-300 flex items-center gap-1.5 min-w-0">
                             <span class="w-1.5 h-1.5 rounded-full {{ $dotColor }} shrink-0"></span>
-                            {{ $item->category_name }}
-                            <span class="text-[10px] text-violet-500 bg-violet-950/60 px-1.5 py-0.5 rounded-full">Transfer</span>
+                            <span class="truncate">{{ $item->category_name }}</span>
+                            @if(!empty($item->source_parent_name))
+                                <span class="text-[10px] text-zinc-500 shrink-0">dari</span>
+                                <span class="text-[10px] font-medium text-violet-400 shrink-0">{{ $item->source_parent_name }}</span>
+                            @endif
+                            <span class="text-[10px] text-violet-500 bg-violet-950/60 px-1.5 py-0.5 rounded-full shrink-0">Transfer</span>
                         </span>
-                        <span class="text-xs text-zinc-400">{{ $item->percentage }}%
+                        <span class="text-xs text-zinc-400 shrink-0 ml-2">{{ $item->percentage }}%
                             <span class="text-zinc-500 ml-1">{{ 'Rp '.number_format($item->amount, 0, ',', '.') }}</span>
                         </span>
                     </div>
@@ -464,6 +558,35 @@
 
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') closeCatModal();
+        });
+
+        // Tooltip toggles
+        function makeTooltipToggle(wrapperId, tooltipId) {
+            return function() {
+                const tip = document.getElementById(tooltipId);
+                if (!tip) return;
+                tip.classList.toggle('hidden');
+            };
+        }
+
+        var toggleTransferOthers   = makeTooltipToggle('transferOthersWrap',   'transferOthersTooltip');
+        var toggleIncomeDetail     = makeTooltipToggle('incomeDetailWrap',      'incomeDetailTooltip');
+        var toggleTransferInOthers = makeTooltipToggle('transferInOthersWrap',  'transferInOthersTooltip');
+
+        var _tooltips = [
+            ['transferOthersWrap',   'transferOthersTooltip'],
+            ['incomeDetailWrap',     'incomeDetailTooltip'],
+            ['transferInOthersWrap', 'transferInOthersTooltip'],
+        ];
+
+        document.addEventListener('click', function(e) {
+            _tooltips.forEach(function(pair) {
+                var wrap = document.getElementById(pair[0]);
+                var tip  = document.getElementById(pair[1]);
+                if (wrap && tip && !wrap.contains(e.target)) {
+                    tip.classList.add('hidden');
+                }
+            });
         });
     </script>
 

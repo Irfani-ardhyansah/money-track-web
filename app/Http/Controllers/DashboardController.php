@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Transaction;
+use App\Models\Wallet;
 use App\Services\ReportService;
 use App\Services\WalletBalanceService;
 use Illuminate\Http\Request;
@@ -23,28 +24,46 @@ class DashboardController extends Controller
             ? $request->query('breakdown_filter')
             : 'all';
 
-        $summary    = $this->reportService->monthlySummary($month, $year);
-        $breakdown  = $this->reportService->categoryBreakdown($month, $year, $breakdownFilter);
-        $recent     = $this->reportService->recentTransactions(10);
+        // Root wallet filter (e.g. "Suami", "Istri")
+        $ownerId     = $request->query('owner_id') ? (int) $request->query('owner_id') : null;
+        $rootWallets = Wallet::whereNull('parent_id')->orderBy('name')->get();
 
-        $savingsTypes  = ['savings', 'investment'];
+        // Derive all wallet IDs belonging to the selected owner (owner + its children)
+        $ownerWalletIds = null;
+        $allOwnerIds    = null;
+        if ($ownerId) {
+            $ownerWalletIds = Wallet::where('id', $ownerId)
+                ->orWhere('parent_id', $ownerId)
+                ->pluck('id')
+                ->toArray();
+            $allOwnerIds = $ownerWalletIds; // same set; used to detect cross-owner transfers
+        }
 
-        // Monthly activity — only regular (spendable) wallets
+        $summary   = $this->reportService->monthlySummary($month, $year, $ownerWalletIds, $allOwnerIds);
+        $breakdown = $this->reportService->categoryBreakdown($month, $year, $breakdownFilter, $ownerWalletIds);
+        $recent    = $this->reportService->recentTransactions(10, $ownerWalletIds);
+
+        $savingsTypes = ['savings', 'investment'];
+
+        // Monthly activity — only regular (spendable) wallets, filtered by owner if set
         $walletTreeMonth = $this->walletBalanceService
             ->walletTreeForMonth($month, $year)
-            ->filter(fn ($w) => ! in_array($w->type, $savingsTypes))
+            ->filter(fn ($w) => ! in_array($w->type, $savingsTypes)
+                && (! $ownerId || $w->id === $ownerId))
             ->values();
 
-        // Cumulative saldo — only savings/investment wallets
+        // Cumulative saldo — only savings/investment wallets, filtered by owner if set
         $walletTreeSavings = $this->walletBalanceService
             ->walletTree()
-            ->filter(fn ($w) => in_array($w->type, $savingsTypes))
+            ->filter(fn ($w) => in_array($w->type, $savingsTypes)
+                && (! $ownerId || $w->id === $ownerId))
             ->values();
 
         return view('dashboard', compact(
             'summary', 'breakdown', 'recent',
             'walletTreeMonth', 'walletTreeSavings',
-            'month', 'year', 'breakdownFilter'
+            'month', 'year', 'breakdownFilter',
+            'rootWallets', 'ownerId'
         ));
     }
 
