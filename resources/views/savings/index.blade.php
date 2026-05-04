@@ -21,6 +21,26 @@
         </div>
     </div>
 
+    {{-- ── Filter dompet utama ───────────────────────────────── --}}
+    @if($parentWallets->count() > 1)
+    <div class="px-4 mb-3">
+        <div class="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none snap-x snap-proximity">
+            <a href="{{ route('savings.index') }}"
+               class="snap-start shrink-0 px-4 py-2 rounded-full text-xs font-semibold transition-all active:scale-[0.98]
+                      {{ is_null($ownerId) ? 'bg-zinc-600 text-white ring-2 ring-zinc-500/40' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 border border-zinc-700/80' }}">
+                Semua
+            </a>
+            @foreach($parentWallets as $pw)
+                <a href="{{ route('savings.index', ['owner_id' => $pw->id]) }}"
+                   class="snap-start shrink-0 px-4 py-2 rounded-full text-xs font-semibold transition-all active:scale-[0.98]
+                          {{ $ownerId === $pw->id ? 'bg-indigo-600 text-white ring-2 ring-indigo-400/30' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 border border-zinc-700/80' }}">
+                    {{ $pw->name }}
+                </a>
+            @endforeach
+        </div>
+    </div>
+    @endif
+
     {{-- Grand total card --}}
     <div class="px-4 mb-4">
         <div class="bg-gradient-to-br from-emerald-900/50 to-zinc-900 border border-emerald-800/50 rounded-2xl px-5 py-5">

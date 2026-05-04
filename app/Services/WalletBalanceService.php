@@ -97,13 +97,18 @@ class WalletBalanceService
      * Build hierarchical wallet tree with balances attached.
      * - Parent wallet balance = own direct balance + sum of all children's direct balances.
      * - Child wallet balance  = own direct balance only.
+     * - Optionally filter to a single root wallet by $parentId.
      */
-    public function walletTree(): Collection
+    public function walletTree(?int $parentId = null): Collection
     {
         $direct = $this->allBalances();
         $rolled = $this->rollupBalances($direct);
 
-        $all = Wallet::with('children')->whereNull('parent_id')->get();
+        $query = Wallet::with('children')->whereNull('parent_id');
+        if ($parentId) {
+            $query->where('id', $parentId);
+        }
+        $all = $query->get();
 
         return $all->map(function (Wallet $wallet) use ($direct, $rolled) {
             $wallet->balance = $rolled->get($wallet->id, 0);
@@ -122,11 +127,11 @@ class WalletBalanceService
     }
 
     /**
-     * Wallet tree with net activity for the given month only (not cumulative).
+     * Return a flat [wallet_id => net_activity] collection for the given month only.
      * income + transfer_in - expense - transfer_out within that month/year.
-     * Wallets with no activity in the month will show 0.
+     * No rollup — each wallet reflects only its own direct transactions.
      */
-    public function walletTreeForMonth(int $month, int $year): Collection
+    public function allMonthlyBalances(int $month, int $year): Collection
     {
         $walletIds = Wallet::pluck('id');
 
@@ -166,15 +171,24 @@ class WalletBalanceService
             ->select('to_wallet_id', DB::raw('SUM(amount) as total'))
             ->pluck('total', 'to_wallet_id');
 
-        $direct = $walletIds->mapWithKeys(function ($id) use ($income, $expense, $transferOut, $transferIn) {
-            return [$id => (float) (
+        return $walletIds->mapWithKeys(fn ($id) => [
+            $id => (float) (
                 $income->get($id, 0)
                 + $transferIn->get($id, 0)
                 - $expense->get($id, 0)
                 - $transferOut->get($id, 0)
-            )];
-        });
+            ),
+        ]);
+    }
 
+    /**
+     * Wallet tree with net activity for the given month only (not cumulative).
+     * income + transfer_in - expense - transfer_out within that month/year.
+     * Wallets with no activity in the month will show 0.
+     */
+    public function walletTreeForMonth(int $month, int $year): Collection
+    {
+        $direct = $this->allMonthlyBalances($month, $year);
         $rolled = $this->rollupBalances($direct);
         $all    = Wallet::with('children')->whereNull('parent_id')->get();
 

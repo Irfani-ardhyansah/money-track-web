@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreSavingsAdjustmentRequest;
 use App\Http\Requests\UpdateSavingsAdjustmentRequest;
 use App\Models\SavingsAdjustment;
+use App\Models\Wallet;
 use App\Services\SavingsService;
 use App\Services\WalletBalanceService;
+use Illuminate\Http\Request;
 
 class SavingsController extends Controller
 {
@@ -15,18 +17,23 @@ class SavingsController extends Controller
         private WalletBalanceService $balanceService,
     ) {}
 
-    public function index()
+    public function index(Request $request)
     {
-        $grandTotal   = $this->savingsService->grandTotal();
-        $totalTracked = $this->savingsService->totalTracked();
-        $totalManual  = $this->savingsService->totalManual();
-        $walletTree   = $this->savingsService->walletTreeWithAdjustments();
+        $ownerId       = $request->filled('owner_id') ? (int) $request->input('owner_id') : null;
+        $parentWallets = Wallet::whereNull('parent_id')->orderBy('name')->get();
+
+        $grandTotal   = $this->savingsService->grandTotal($ownerId);
+        $totalTracked = $this->savingsService->totalTracked($ownerId);
+        $totalManual  = $this->savingsService->totalManual($ownerId);
+        $walletTree   = $this->savingsService->walletTreeWithAdjustments($ownerId);
 
         return view('savings.index', compact(
             'grandTotal',
             'totalTracked',
             'totalManual',
             'walletTree',
+            'parentWallets',
+            'ownerId',
         ));
     }
 

@@ -32,7 +32,8 @@ class ReportService
             ->when($ownerWalletIds, fn ($q) => $q->whereIn('wallet_id', $ownerWalletIds))
             ->sum('amount');
 
-        $transferSavings = (float) DB::table('transactions')
+        // Gross transfers TO savings wallets this month.
+        $savingsDeposits = (float) DB::table('transactions')
             ->join('wallets as tw', 'transactions.to_wallet_id', '=', 'tw.id')
             ->whereYear('transactions.occurred_at', $year)
             ->whereMonth('transactions.occurred_at', $month)
@@ -41,6 +42,20 @@ class ReportService
             ->whereNull('tw.deleted_at')
             ->when($ownerWalletIds, fn ($q) => $q->whereIn('transactions.wallet_id', $ownerWalletIds))
             ->sum('transactions.amount');
+
+        // Withdrawals FROM savings wallets back to regular wallets this month.
+        // Subtract to get net savings allocation, consistent with the wallet balance card.
+        $savingsWithdrawals = (float) DB::table('transactions')
+            ->join('wallets as sw', 'transactions.wallet_id', '=', 'sw.id')
+            ->whereYear('transactions.occurred_at', $year)
+            ->whereMonth('transactions.occurred_at', $month)
+            ->where('transactions.type', 'transfer')
+            ->whereIn('sw.type', $savingsTypes)
+            ->whereNull('sw.deleted_at')
+            ->when($ownerWalletIds, fn ($q) => $q->whereIn('transactions.wallet_id', $ownerWalletIds))
+            ->sum('transactions.amount');
+
+        $transferSavings = $savingsDeposits - $savingsWithdrawals;
 
         // Transfers from this owner's wallets to wallets belonging to other top-level owners.
         // Only computed when a specific owner is selected.
@@ -204,14 +219,45 @@ class ReportService
                     DB::raw('COALESCE(spw.name, sw.name) as source_parent_name'),
                     DB::raw('SUM(transactions.amount) as total')
                 )
-                ->get()
-                ->map(fn ($r) => (object) [
-                    'category_id'        => null,
-                    'category_name'      => $r->wallet_name,
-                    'source_parent_name' => $r->source_parent_name,
-                    'amount'             => (float) $r->total,
-                    'entry_type'         => 'transfer_savings',
-                ]);
+                ->get();
+
+            // Outflows FROM savings wallets (e.g. withdrawals back to regular wallets) in the same period.
+            // Subtracting these gives the net savings movement, consistent with the wallet balance card.
+            $savingsOutflows = DB::table('transactions')
+                ->join('wallets as sw', 'transactions.wallet_id', '=', 'sw.id')
+                ->whereYear('transactions.occurred_at', $year)
+                ->whereMonth('transactions.occurred_at', $month)
+                ->where('transactions.type', 'transfer')
+                ->whereIn('sw.type', $savingsTypes)
+                ->whereNull('sw.deleted_at')
+                ->when($ownerWalletIds, fn ($q) => $q->whereIn('transactions.wallet_id', $ownerWalletIds))
+                ->groupBy('transactions.wallet_id')
+                ->select('transactions.wallet_id', DB::raw('SUM(transactions.amount) as total_out'))
+                ->pluck('total_out', 'wallet_id')
+                ->map(fn ($v) => (float) $v);
+
+            // Total inflow per savings wallet — used to split outflow proportionally
+            // when the same wallet received transfers from multiple source owners.
+            $inTotals = $trRows->groupBy('to_wallet_id')
+                ->map(fn ($rows) => (float) $rows->sum('total'));
+
+            $trRows = $trRows
+                ->map(function ($r) use ($savingsOutflows, $inTotals) {
+                    $outflow  = $savingsOutflows->get($r->to_wallet_id, 0.0);
+                    $inTotal  = $inTotals->get($r->to_wallet_id, 0.0);
+                    $rowShare = $inTotal > 0 ? ((float) $r->total / $inTotal) : 1.0;
+                    $adjusted = (float) $r->total - ($outflow * $rowShare);
+
+                    return (object) [
+                        'category_id'        => null,
+                        'category_name'      => $r->wallet_name,
+                        'source_parent_name' => $r->source_parent_name,
+                        'amount'             => $adjusted,
+                        'entry_type'         => 'transfer_savings',
+                    ];
+                })
+                ->filter(fn ($r) => $r->amount > 0)
+                ->values();
 
             $items = $items->merge($trRows);
         }

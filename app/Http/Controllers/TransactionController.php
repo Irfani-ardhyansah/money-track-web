@@ -16,12 +16,28 @@ class TransactionController extends Controller
 
     public function index(Request $request)
     {
-        $query = Transaction::with(['wallet', 'toWallet', 'category'])
+        $ownerId = $request->filled('owner_id') ? (int) $request->input('owner_id') : null;
+
+        $ownerWalletIds = null;
+        if ($ownerId) {
+            $ownerWalletIds = Wallet::where('id', $ownerId)
+                ->orWhere('parent_id', $ownerId)
+                ->pluck('id')
+                ->toArray();
+        }
+
+        $query = Transaction::with(['wallet.parent', 'toWallet.parent', 'category'])
             ->orderByDesc('occurred_at')
             ->orderByDesc('id');
 
         if ($request->filled('type')) {
             $query->where('type', $request->type);
+        }
+
+        if ($request->filled('wallet_id')) {
+            $query->where('wallet_id', $request->wallet_id);
+        } elseif ($ownerWalletIds) {
+            $query->whereIn('wallet_id', $ownerWalletIds);
         }
 
         if ($request->filled('category_id')) {
@@ -36,10 +52,29 @@ class TransactionController extends Controller
             $query->whereDate('occurred_at', '<=', $request->date_to);
         }
 
-        $transactions = $query->paginate(20)->withQueryString();
-        $categories = Category::orderBy('name')->get();
+        if ($request->filled('search')) {
+            $s = $request->input('search');
+            $query->where(function ($q) use ($s) {
+                $q->where('notes', 'like', "%{$s}%")
+                    ->orWhereHas('category', fn ($c) => $c->where('name', 'like', "%{$s}%"))
+                    ->orWhereHas('wallet', fn ($w) => $w->where('name', 'like', "%{$s}%"));
+            });
+        }
 
-        return view('transactions.index', compact('transactions', 'categories'));
+        $transactions = $query->paginate(20)->withQueryString();
+        $categories   = Category::orderBy('name')->get();
+        $rootWallets  = Wallet::whereNull('parent_id')->orderBy('name')->get();
+
+        $wallets = Wallet::with('parent')
+            ->when($ownerWalletIds, fn ($q) => $q->whereIn('id', $ownerWalletIds))
+            ->orderBy('name')
+            ->get();
+
+        $balances = $this->balanceService->allBalancesWithRollup();
+
+        return view('transactions.index', compact(
+            'transactions', 'categories', 'rootWallets', 'wallets', 'ownerId', 'balances'
+        ));
     }
 
     public function create()

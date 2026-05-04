@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\SavingsAdjustment;
+use App\Models\Wallet;
 use Illuminate\Support\Collection;
 
 class SavingsService
@@ -12,27 +13,35 @@ class SavingsService
     /**
      * Sum of all root wallet transaction balances (with child rollup) — no double-count.
      */
-    public function totalTracked(): float
+    public function totalTracked(?int $parentId = null): float
     {
         return (float) $this->walletBalanceService
-            ->walletTree()
+            ->walletTree($parentId)
             ->sum('balance');
     }
 
     /**
-     * Sum of all manual savings adjustments.
+     * Sum of all manual savings adjustments, optionally scoped to a root wallet group.
      */
-    public function totalManual(): float
+    public function totalManual(?int $parentId = null): float
     {
+        if ($parentId) {
+            $walletIds = Wallet::where('id', $parentId)
+                ->orWhere('parent_id', $parentId)
+                ->pluck('id');
+
+            return (float) SavingsAdjustment::whereIn('wallet_id', $walletIds)->sum('amount');
+        }
+
         return (float) SavingsAdjustment::sum('amount');
     }
 
     /**
      * Grand total = tracked wallet saldo + manual adjustments.
      */
-    public function grandTotal(): float
+    public function grandTotal(?int $parentId = null): float
     {
-        return $this->totalTracked() + $this->totalManual();
+        return $this->totalTracked($parentId) + $this->totalManual($parentId);
     }
 
     /**
@@ -56,9 +65,9 @@ class SavingsService
      * Parent wallet effectiveBalance INCLUDES the child rollup on the transaction side,
      * but adjustment totals are per-wallet (not rolled up), so they display separately.
      */
-    public function walletTreeWithAdjustments(): Collection
+    public function walletTreeWithAdjustments(?int $parentId = null): Collection
     {
-        $walletTree = $this->walletBalanceService->walletTree();
+        $walletTree = $this->walletBalanceService->walletTree($parentId);
 
         // Eager-load all adjustments keyed by wallet_id
         $adjustments = SavingsAdjustment::with('wallet')

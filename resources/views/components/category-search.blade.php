@@ -5,12 +5,24 @@
 ])
 
 <div class="relative" id="wrapper_category_id">
-    <input type="text"
-           id="search_category_id"
-           placeholder="{{ $placeholder }}"
-           autocomplete="off"
-           value="{{ $initialLabel }}"
-           class="w-full bg-zinc-800 border border-zinc-700 text-zinc-100 text-base rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none placeholder:text-zinc-600">
+    <div class="flex items-center bg-zinc-800 border border-zinc-700 rounded-xl
+                focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-transparent transition-shadow">
+        <input type="text"
+               id="search_category_id"
+               placeholder="{{ $placeholder }}"
+               autocomplete="off"
+               value="{{ $initialLabel }}"
+               class="flex-1 min-w-0 bg-transparent text-zinc-100 text-base px-4 py-3 outline-none placeholder:text-zinc-600">
+
+        <button type="button"
+                id="clear_category_id"
+                tabindex="-1"
+                class="{{ $initialId || $initialLabel ? '' : 'hidden' }} shrink-0 mr-2 w-5 h-5 rounded-full bg-zinc-600 hover:bg-zinc-500 flex items-center justify-center transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-zinc-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    </div>
     <input type="hidden" name="category_id" id="category_id" value="{{ $initialId }}">
 
     <div id="dropdown_category_id"
@@ -25,6 +37,7 @@ function initCategorySearch(cfg) {
     const hidden   = document.getElementById(cfg.hiddenId);
     const dropdown = document.getElementById(cfg.dropdownId);
     const wrapper  = document.getElementById(cfg.wrapperId);
+    const clearBtn = document.getElementById(cfg.clearId);
     let timer;
 
     function esc(s) {
@@ -34,10 +47,28 @@ function initCategorySearch(cfg) {
     const typeLabel = { income: 'Pemasukan', expense: 'Pengeluaran' };
     const typeCls   = { income: 'bg-emerald-900/50 text-emerald-400', expense: 'bg-rose-900/50 text-rose-400' };
 
+    function syncClearBtn() {
+        if (!clearBtn) return;
+        if (input.value.trim() || hidden.value) {
+            clearBtn.classList.remove('hidden');
+        } else {
+            clearBtn.classList.add('hidden');
+        }
+    }
+
+    function clearAll() {
+        input.value = '';
+        hidden.value = '';
+        dropdown.classList.add('hidden');
+        syncClearBtn();
+        input.focus();
+    }
+
     function pick(item) {
         input.value  = item.name;
         hidden.value = item.id;
         dropdown.classList.add('hidden');
+        syncClearBtn();
     }
 
     function render(items) {
@@ -74,9 +105,15 @@ function initCategorySearch(cfg) {
     }
 
     function activeType() {
-        const el = document.querySelector('input[name="type"]:checked');
-        const v  = el ? el.value : '';
-        return (v === 'income' || v === 'expense') ? v : '';
+        const radio = document.querySelector('input[name="type"]:checked');
+        if (radio && (radio.value === 'income' || radio.value === 'expense')) {
+            return radio.value;
+        }
+        const fi = document.getElementById('fi_type');
+        if (fi && (fi.value === 'income' || fi.value === 'expense')) {
+            return fi.value;
+        }
+        return '';
     }
 
     function doSearch(q) {
@@ -87,8 +124,16 @@ function initCategorySearch(cfg) {
             .then(render);
     }
 
+    if (clearBtn) {
+        clearBtn.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            clearAll();
+        });
+    }
+
     input.addEventListener('input', function() {
         hidden.value = '';
+        syncClearBtn();
         clearTimeout(timer);
         const q = this.value.trim();
         timer = setTimeout(function() { doSearch(q); }, 200);
@@ -104,6 +149,7 @@ function initCategorySearch(cfg) {
             dropdown.classList.add('hidden');
             if (!hidden.value && self.value.trim()) {
                 self.value = '';
+                syncClearBtn();
             }
         }, 160);
     });
@@ -112,11 +158,12 @@ function initCategorySearch(cfg) {
         if (!wrapper.contains(e.target)) dropdown.classList.add('hidden');
     });
 
-    // Reset pilihan kategori saat jenis transaksi berubah
+    // Reset pilihan kategori saat jenis transaksi berubah (form tambah transaksi)
     document.querySelectorAll('input[name="type"]').forEach(function(radio) {
         radio.addEventListener('change', function() {
             hidden.value = '';
             input.value  = '';
+            syncClearBtn();
             dropdown.classList.add('hidden');
         });
     });
@@ -130,6 +177,7 @@ initCategorySearch({
     inputId:    'search_category_id',
     hiddenId:   'category_id',
     dropdownId: 'dropdown_category_id',
+    clearId:    'clear_category_id',
     searchUrl:  '{{ route('categories.search') }}',
 });
 </script>
